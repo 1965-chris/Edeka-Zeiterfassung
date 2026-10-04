@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Zeiterfassung</title>
+<meta name="theme-color" content="#1f6f5c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Zeiten">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<style>
+:root{
+  --bg:#f3f5f4; --card:#ffffff; --text:#17201d; --muted:#6b7773; --line:#e2e7e5;
+  --accent:#1f6f5c; --accent-soft:#dcefe8; --plus:#1f8a4c; --minus:#c0392b;
+  --urlaub:#2f7bd8; --feiertag:#8e44ad; --krank:#d35400; --frei:#8a9490; --sonder:#b8860b;
+  --radius:14px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f1413; --card:#1a2220; --text:#e8eeec; --muted:#93a19c; --line:#2a3532;
+    --accent:#4fbf9f; --accent-soft:#1d3a32; --plus:#4cd07d; --minus:#ff6b5b;
+    --urlaub:#5aa2ff; --feiertag:#c084fc; --krank:#ff9a4d; --frei:#7d8a86; --sonder:#e0b83a;
+  }
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);
+  font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif}
+body{padding:env(safe-area-inset-top) 0 calc(72px + env(safe-area-inset-bottom))}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 16px 8px}
+header h1{margin:0;font-size:22px;letter-spacing:-.3px}
+header .sub{color:var(--muted);font-size:13px}
+main{padding:0 16px 16px;max-width:640px;margin:0 auto}
+.card{background:var(--card);border-radius:var(--radius);padding:14px;margin:10px 0;box-shadow:0 1px 2px rgba(0,0,0,.05)}
+.nav{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.nav b{font-size:17px}
+.nav small{display:block;color:var(--muted);font-weight:400;font-size:13px}
+.iconbtn{border:0;background:var(--accent-soft);color:var(--accent);width:40px;height:40px;border-radius:12px;font-size:20px;font-weight:600}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.stat{background:var(--card);border-radius:12px;padding:10px 8px;text-align:center}
+.stat .v{font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+.stat .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.pos{color:var(--plus)} .neg{color:var(--minus)}
+.day{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line);cursor:pointer}
+.day:last-child{border-bottom:0}
+.day .d{width:52px;flex:none}
+.day .d b{display:block;font-size:15px}
+.day .d span{font-size:12px;color:var(--muted)}
+.day .m{flex:1;min-width:0}
+.day .m .t{font-variant-numeric:tabular-nums}
+.day .m .n{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.day .h{font-weight:700;font-variant-numeric:tabular-nums;min-width:48px;text-align:right}
+.day.today .d b{color:var(--accent)}
+.day.sun{opacity:.75}
+.chip{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;color:#fff;background:var(--accent)}
+.chip.urlaub{background:var(--urlaub)} .chip.feiertag{background:var(--feiertag)} .chip.krank{background:var(--krank)}
+.chip.frei{background:var(--frei)} .chip.sonder{background:var(--sonder)}
+.chip.ghost{background:transparent;color:var(--muted);border:1px dashed var(--line)}
+.hol{font-size:11px;color:var(--feiertag)}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.btn{border:0;border-radius:12px;padding:11px 14px;font-size:15px;font-weight:600;background:var(--accent-soft);color:var(--accent)}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.danger{background:transparent;color:var(--minus)}
+.btn.small{padding:7px 11px;font-size:13px}
+.btn.on{background:var(--accent);color:#fff}
+label.f{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
+input,select,textarea{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
+input[type=checkbox]{width:auto}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:14px}
+th,td{padding:8px 4px;text-align:right;border-bottom:1px solid var(--line)}
+th:first-child,td:first-child{text-align:left}
+th{font-size:11px;color:var(--muted);text-transform:uppercase;font-weight:600}
+tfoot td{font-weight:700;border-bottom:0}
+h2{font-size:15px;margin:4px 0 8px}
+.muted{color:var(--muted);font-size:13px}
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;background:var(--card);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom)}
+.tabbar button{flex:1;border:0;background:none;color:var(--muted);padding:9px 0 8px;font-size:11px;font-weight:600}
+.tabbar button .i{display:block;font-size:20px;line-height:1.2}
+.tabbar button.act{color:var(--accent)}
+.sheet-bg{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:20;display:none}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:21;background:var(--card);border-radius:18px 18px 0 0;
+  padding:16px 16px calc(16px + env(safe-area-inset-bottom));max-height:88vh;overflow:auto;transform:translateY(105%);transition:transform .22s ease;max-width:640px;margin:0 auto}
+.sheet.open{transform:none}
+.sheet-bg.open{display:block}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.seg button{border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:10px;padding:9px 4px;font-size:14px;font-weight:600}
+.seg button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.calc{margin-top:10px;padding:10px;border-radius:10px;background:var(--accent-soft);color:var(--accent);font-weight:700;text-align:center}
+.toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:14px;z-index:30;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+.tpl{display:grid;grid-template-columns:1.3fr 1fr 1fr .8fr auto;gap:6px;align-items:center;margin-bottom:6px}
+.tpl input{padding:8px}
+</style>
+</head>
+<body>
+<header><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></header>
+<main id="app"></main>
+
+<nav class="tabbar">
+  <button data-tab="woche"><span class="i">🗓️</span>Woche</button>
+  <button data-tab="monat"><span class="i">📊</span>Monat</button>
+  <button data-tab="jahr"><span class="i">📈</span>Jahr</button>
+  <button data-tab="einst"><span class="i">⚙️</span>Einstellungen</button>
+</nav>
+
+<div class="sheet-bg" id="sheetBg"></div>
+<div class="sheet" id="sheet"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+const APP_VERSION = 'v1.0';
+const KEY = 'zeiterfassung-daten';
+
+/* ---------- Typen ---------- */
+const TYPEN = {
+  arbeit:   {name:'Arbeit',     gutschrift:false},
+  frei:     {name:'Frei',       gutschrift:false},
+  urlaub:   {name:'Urlaub',     gutschrift:true},
+  feiertag: {name:'Feiertag',   gutschrift:true},
+  krank:    {name:'Krank',      gutschrift:true},
+  sonder:   {name:'Sonderurl.', gutschrift:true}
+};
+
+/* ---------- Daten ---------- */
+const DEFAULT = {
+  settings:{
+    sollTag:6.25, wochenSoll:37.5, startDatum:'', startSaldo:0, urlaubAnspruch:0, feiertageNRW:true,
+    schichten:[
+      {name:'Früh',  von:'05:45', bis:'13:45', pause:30},
+      {name:'Spät',  von:'13:15', bis:'21:15', pause:30},
+      {name:'Mittel',von:'10:15', bis:'18:15', pause:30}
+    ]
+  },
+  days:{}, monate:{}
+};
+let S;
+function load(){
+  try{ S = JSON.parse(localStorage.getItem(KEY)) || null; }catch(e){ S = null; }
+  if(!S) S = structuredClone(DEFAULT);
+  S.settings = Object.assign(structuredClone(DEFAULT.settings), S.settings||{});
+  S.days = S.days||{}; S.monate = S.monate||{};
+}
+function save(){
+  try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){ toast('Speichern fehlgeschlagen!'); }
+}
+
+/* ---------- Helfer ---------- */
+const pad = n => String(n).padStart(2,'0');
+const iso = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const parse = s => { const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); };
+const addDays = (d,n) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+const monday = d => { const x=new Date(d.getFullYear(),d.getMonth(),d.getDate()); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; };
+const WT = ['So','Mo','Di','Mi','Do','Fr','Sa'];
+const MON = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+const fmt = n => (Math.round(n*100)/100).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fmtS = n => (n>0?'+':'') + fmt(n);
+const eur = n => isFinite(n) ? n.toLocaleString('de-DE',{style:'currency',currency:'EUR'}) : '–';
+const ddmm = d => `${pad(d.getDate())}.${pad(d.getMonth()+1)}.`;
+const toMin = s => { if(!s) return null; const [h,m]=s.split(':').map(Number); return h*60+m; };
+const num = v => { const n = parseFloat(String(v).replace(',','.')); return isFinite(n)?n:0; };
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function kw(d){ const t=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())); const n=t.getUTCDay()||7; t.setUTCDate(t.getUTCDate()+4-n); const y=new Date(Date.UTC(t.getUTCFullYear(),0,1)); return Math.ceil(((t-y)/864e5+1)/7); }
+
+/* ---------- Feiertage NRW ---------- */
+const holCache = {};
+function ostern(y){const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451),mo=Math.floor((h+l-7*m+114)/31),da=((h+l-7*m+114)%31)+1;return new Date(y,mo-1,da);}
+function feiertage(y){
+  if(holCache[y]) return holCache[y];
+  const e=ostern(y), r={};
+  const add=(d,n)=>r[iso(d)]=n;
+  add(new Date(y,0,1),'Neujahr'); add(addDays(e,-2),'Karfreitag'); add(addDays(e,1),'Ostermontag');
+  add(new Date(y,4,1),'Tag der Arbeit'); add(addDays(e,39),'Christi Himmelfahrt'); add(addDays(e,50),'Pfingstmontag');
+  add(addDays(e,60),'Fronleichnam'); add(new Date(y,9,3),'Tag der Dt. Einheit'); add(new Date(y,10,1),'Allerheiligen');
+  add(new Date(y,11,25),'1. Weihnachtstag'); add(new Date(y,11,26),'2. Weihnachtstag');
+  return holCache[y]=r;
+}
+const feiertag = s => S.settings.feiertageNRW ? feiertage(+s.slice(0,4))[s] : null;
+
+/* ---------- Berechnung ---------- */
+function stunden(e){
+  if(!e) return 0;
+  if(TYPEN[e.typ]?.gutschrift) return S.settings.sollTag;
+  if(e.typ!=='arbeit') return 0;
+  let a=toMin(e.von), b=toMin(e.bis);
+  if(a==null||b==null) return 0;
+  if(b<a) b+=1440;
+  return Math.max(0,(b-a-(+e.pause||0))/60);
+}
+function woche(mo){
+  let ist=0, hat=false;
+  for(let i=0;i<7;i++){ const e=S.days[iso(addDays(mo,i))]; if(e){hat=true; ist+=stunden(e);} }
+  return {ist, soll:S.settings.wochenSoll, diff:ist-S.settings.wochenSoll, hat};
+}
+/* Überstundenkonto: Startsaldo + Summe aller abgeschlossenen Wochen mit Einträgen */
+function konto(bisMontag){
+  const keys=Object.keys(S.days).sort();
+  let start = S.settings.startDatum || keys[0];
+  let saldo = num(S.settings.startSaldo);
+  if(!start) return saldo;
+  for(let mo=monday(parse(start)); mo<bisMontag; mo=addDays(mo,7)){
+    const w=woche(mo); if(w.hat) saldo+=w.diff;
+  }
+  return saldo;
+}
+function monat(y,m){
+  const r={std:0,arbeit:0,urlaub:0,krank:0,feiertag:0,frei:0,sonder:0,zuschlag:0};
+  const p=`${y}-${pad(m+1)}-`;
+  for(const [k,e] of Object.entries(S.days)){
+    if(!k.startsWith(p)) continue;
+    const h=stunden(e); r.std+=h; r[e.typ]=(r[e.typ]||0)+1;
+    if(e.zuschlag) r.zuschlag+=h;
+  }
+  return r;
+}
+
+/* ---------- UI-Zustand ---------- */
+let tab='woche', curMon=monday(new Date()), curMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1), curYear=new Date().getFullYear();
+const app=document.getElementById('app');
+function toast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),1800);}
+
+function render(){
+  document.querySelectorAll('.tabbar button').forEach(b=>b.classList.toggle('act',b.dataset.tab===tab));
+  ({woche:renderWoche,monat:renderMonat,jahr:renderJahr,einst:renderEinst})[tab]();
+}
+
+/* ---------- Woche ---------- */
+function renderWoche(){
+  const mo=curMon, so=addDays(mo,6), w=woche(mo), k=konto(mo), today=iso(new Date());
+  const istAktuell = mo.getTime()===monday(new Date()).getTime();
+  setTitle('Woche', `KW ${kw(mo)} · ${ddmm(mo)}–${ddmm(so)}${so.getFullYear()}`);
+  let rows='';
+  for(let i=0;i<7;i++){
+    const d=addDays(mo,i), s=iso(d), e=S.days[s], h=stunden(e), ft=feiertag(s);
+    let mid;
+    if(!e) mid=`<span class="chip ghost">leer</span>`;
+    else if(e.typ==='arbeit') mid=`<div class="t">${e.von||'--:--'} – ${e.bis||'--:--'} <span class="muted">· ${e.pause||0} min Pause</span>${e.zuschlag?' <span class="chip sonder">Zuschlag</span>':''}</div>`;
+    else mid=`<span class="chip ${e.typ}">${TYPEN[e.typ].name}</span>`;
+    rows+=`<div class="day ${s===today?'today':''} ${i===6?'sun':''}" data-edit="${s}">
+      <div class="d"><b>${WT[d.getDay()]}</b><span>${ddmm(d)}</span></div>
+      <div class="m">${mid}${ft?`<div class="hol">🎉 ${ft}</div>`:''}${e?.notiz?`<div class="n">${esc(e.notiz)}</div>`:''}</div>
+      <div class="h">${e?fmt(h):''}</div></div>`;
+  }
+  const saldoNeu = k + (w.hat?w.diff:0);
+  app.innerHTML=`
+  <div class="card nav">
+    <button class="iconbtn" data-act="wprev">‹</button>
+    <div style="text-align:center"><b>KW ${kw(mo)}</b><small>${ddmm(mo)} – ${ddmm(so)}${so.getFullYear()}</small></div>
+    <button class="iconbtn" data-act="wnext">›</button>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="v">${fmt(w.ist)}</div><div class="l">Ist</div></div>
+    <div class="stat"><div class="v">${fmt(w.soll)}</div><div class="l">Soll</div></div>
+    <div class="stat"><div class="v ${w.diff>=0?'pos':'neg'}">${fmtS(w.diff)}</div><div class="l">Woche</div></div>
+    <div class="stat"><div class="v ${saldoNeu>=0?'pos':'neg'}">${fmtS(saldoNeu)}</div><div class="l">Konto</div></div>
+  </div>
+  <div class="card">${rows}</div>
+  <div class="card">
+    <h2>Woche ausfüllen</h2>
+    <div class="muted" style="margin-bottom:8px">Füllt leere Tage Mo–Sa mit der Schicht, Feiertage werden automatisch gesetzt. Den freien Tag danach einfach antippen.</div>
+    <div class="row">${S.settings.schichten.map((t,i)=>`<button class="btn small" data-fill="${i}">${esc(t.name)}</button>`).join('')}
+    ${istAktuell?'':'<button class="btn small" data-act="wtoday">Heute</button>'}</div>
+  </div>`;
+}
+
+/* ---------- Tag bearbeiten ---------- */
+let edit=null;
+function openEdit(s){
+  const e=S.days[s], ft=feiertag(s);
+  edit = e ? structuredClone(e) : (ft ? {typ:'feiertag'} : {typ:'arbeit',von:'',bis:'',pause:30});
+  edit._s=s; drawSheet();
+  document.getElementById('sheet').classList.add('open'); document.getElementById('sheetBg').classList.add('open');
+}
+function closeSheet(){ document.getElementById('sheet').classList.remove('open'); document.getElementById('sheetBg').classList.remove('open'); edit=null; }
+function drawSheet(){
+  const d=parse(edit._s), ft=feiertag(edit._s), ex=!!S.days[edit._s];
+  const tb=Object.entries(TYPEN).map(([k,t])=>`<button data-typ="${k}" class="${edit.typ===k?'on':''}">${t.name}</button>`).join('');
+  let body='';
+  if(edit.typ==='arbeit'){
+    body=`<label class="f">Schicht-Vorlage</label>
+    <div class="row">${S.settings.schichten.map((t,i)=>`<button class="btn small ${edit.von===t.von&&edit.bis===t.bis?'on':''}" data-tpl="${i}">${esc(t.name)} <span style="opacity:.7;font-weight:400">${t.von}–${t.bis}</span></button>`).join('')}</div>
+    <div class="grid3">
+      <div><label class="f">Von</label><input type="time" id="eVon" value="${edit.von||''}"></div>
+      <div><label class="f">Bis</label><input type="time" id="eBis" value="${edit.bis||''}"></div>
+      <div><label class="f">Pause (min)</label><input type="number" inputmode="numeric" id="ePause" value="${edit.pause??30}"></div>
+    </div>
+    <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="eZ" ${edit.zuschlag?'checked':''}> Zuschlag (z. B. Sonntag / Inventur)</label>
+    <div class="calc" id="eCalc">${fmt(stunden(edit))} Std.</div>`;
+  } else if(TYPEN[edit.typ].gutschrift){
+    body=`<div class="calc">Gutschrift ${fmt(S.settings.sollTag)} Std.</div>`;
+  } else {
+    body=`<div class="calc">0,00 Std.</div>`;
+  }
+  document.getElementById('sheet').innerHTML=`
+    <div class="nav" style="margin-bottom:10px"><b>${['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'][d.getDay()]}, ${ddmm(d)}${d.getFullYear()}<small>${ft?'🎉 '+ft:''}</small></b>
+    <button class="iconbtn" data-act="close">✕</button></div>
+    <div class="seg">${tb}</div>
+    ${body}
+    <label class="f">Bemerkung / Ort</label><input id="eNotiz" value="${esc(edit.notiz||'')}" placeholder="z. B. Baumberg">
+    <div class="row" style="margin-top:14px;justify-content:space-between">
+      ${ex?'<button class="btn danger" data-act="del">Löschen</button>':'<span></span>'}
+      <button class="btn primary" data-act="save" style="flex:1;max-width:220px">Speichern</button>
+    </div>`;
+}
+function readSheet(){
+  const g=id=>document.getElementById(id);
+  if(g('eVon')){ edit.von=g('eVon').value; edit.bis=g('eBis').value; edit.pause=parseInt(g('ePause').value)||0; edit.zuschlag=g('eZ').checked; }
+  if(g('eNotiz')) edit.notiz=g('eNotiz').value.trim();
+}
+
+/* ---------- Monat ---------- */
+function renderMonat(){
+  const y=curMonth.getFullYear(), m=curMonth.getMonth(), r=monat(y,m), key=`${y}-${pad(m+1)}`, g=S.monate[key]||{};
+  setTitle('Monat', `${MON[m]} ${y}`);
+  const br=num(g.brutto), ne=num(g.netto);
+  let list='';
+  const last=new Date(y,m+1,0).getDate();
+  for(let i=1;i<=last;i++){
+    const s=`${key}-${pad(i)}`, e=S.days[s]; if(!e) continue;
+    const d=parse(s);
+    list+=`<tr data-edit="${s}"><td>${WT[d.getDay()]} ${ddmm(d)}</td><td style="text-align:left">${e.typ==='arbeit'?`${e.von}–${e.bis}`:`<span class="chip ${e.typ}">${TYPEN[e.typ].name}</span>`}</td><td>${fmt(stunden(e))}</td></tr>`;
+  }
+  app.innerHTML=`
+  <div class="card nav">
+    <button class="iconbtn" data-act="mprev">‹</button><b>${MON[m]} ${y}</b><button class="iconbtn" data-act="mnext">›</button>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="v">${fmt(r.std)}</div><div class="l">Std.</div></div>
+    <div class="stat"><div class="v">${r.arbeit}</div><div class="l">Arbeit</div></div>
+    <div class="stat"><div class="v">${r.urlaub+r.sonder}</div><div class="l">Urlaub</div></div>
+    <div class="stat"><div class="v">${r.krank}</div><div class="l">Krank</div></div>
+  </div>
+  <div class="card">
+    <h2>Lohn</h2>
+    <div class="grid2">
+      <div><label class="f">Brutto (€)</label><input inputmode="decimal" data-money="brutto" value="${g.brutto??''}" placeholder="0,00"></div>
+      <div><label class="f">Netto (€)</label><input inputmode="decimal" data-money="netto" value="${g.netto??''}" placeholder="0,00"></div>
+    </div>
+    <div class="grid2" style="margin-top:10px">
+      <div class="calc">Brutto/Std<br>${br&&r.std?eur(br/r.std):'–'}</div>
+      <div class="calc">Netto/Std<br>${ne&&r.std?eur(ne/r.std):'–'}</div>
+    </div>
+    <div class="muted" style="margin-top:8px">Feiertage: ${r.feiertag} · Freie Tage: ${r.frei}${r.zuschlag?` · Zuschlagsstunden: ${fmt(r.zuschlag)}`:''}</div>
+    <div class="row" style="margin-top:8px"><button class="btn small" data-act="copyprev">Lohn vom Vormonat übernehmen</button></div>
+  </div>
+  <div class="card"><h2>Einträge</h2>${list?`<table><tbody>${list}</tbody></table>`:'<div class="muted">Noch keine Einträge.</div>'}</div>`;
+}
+
+/* ---------- Jahr ---------- */
+function renderJahr(){
+  const y=curYear; setTitle('Jahr', String(y));
+  let rows='', T={std:0,br:0,ne:0,urlaub:0,krank:0};
+  for(let m=0;m<12;m++){
+    const r=monat(y,m), g=S.monate[`${y}-${pad(m+1)}`]||{}, br=num(g.brutto), ne=num(g.netto);
+    T.std+=r.std; T.br+=br; T.ne+=ne; T.urlaub+=r.urlaub; T.krank+=r.krank;
+    if(!r.std && !br) { rows+=`<tr class="muted"><td>${MON[m].slice(0,3)}</td><td>–</td><td>–</td><td>–</td><td>–</td></tr>`; continue; }
+    rows+=`<tr data-month="${m}"><td>${MON[m].slice(0,3)}</td><td>${fmt(r.std)}</td><td>${br&&r.std?eur(br/r.std):'–'}</td><td>${ne&&r.std?eur(ne/r.std):'–'}</td><td>${r.urlaub||''}</td></tr>`;
+  }
+  const ans=num(S.settings.urlaubAnspruch);
+  const saldo=konto(addDays(monday(new Date()),0));
+  app.innerHTML=`
+  <div class="card nav"><button class="iconbtn" data-act="yprev">‹</button><b>${y}</b><button class="iconbtn" data-act="ynext">›</button></div>
+  <div class="stats">
+    <div class="stat"><div class="v">${fmt(T.std)}</div><div class="l">Std.</div></div>
+    <div class="stat"><div class="v">${T.urlaub}${ans?`/${ans}`:''}</div><div class="l">Urlaub</div></div>
+    <div class="stat"><div class="v">${T.krank}</div><div class="l">Krank</div></div>
+    <div class="stat"><div class="v ${saldo>=0?'pos':'neg'}">${fmtS(saldo)}</div><div class="l">Konto</div></div>
+  </div>
+  <div class="card"><table>
+    <thead><tr><th>Monat</th><th>Std.</th><th>Br./h</th><th>Ne./h</th><th>Url.</th></tr></thead>
+    <tbody>${rows}</tbody>
+    <tfoot><tr><td>Σ</td><td>${fmt(T.std)}</td><td>${T.br&&T.std?eur(T.br/T.std):'–'}</td><td>${T.ne&&T.std?eur(T.ne/T.std):'–'}</td><td>${T.urlaub}</td></tr></tfoot>
+  </table>
+  ${ans?`<div class="muted" style="margin-top:8px">Resturlaub: <b>${ans-T.urlaub} Tage</b></div>`:''}
+  <div class="muted" style="margin-top:4px">Konto = Stand bis Ende letzter Woche.</div></div>`;
+}
+
+/* ---------- Einstellungen ---------- */
+function renderEinst(){
+  const st=S.settings; setTitle('Einstellungen', APP_VERSION);
+  app.innerHTML=`
+  <div class="card">
+    <h2>Arbeitszeit</h2>
+    <div class="grid2">
+      <div><label class="f">Soll pro Woche (Std.)</label><input inputmode="decimal" data-set="wochenSoll" value="${fmt(st.wochenSoll)}"></div>
+      <div><label class="f">Gutschrift Urlaub/Feiertag/Krank (Std.)</label><input inputmode="decimal" data-set="sollTag" value="${fmt(st.sollTag)}"></div>
+    </div>
+    <label class="f">Urlaubsanspruch pro Jahr (Tage)</label><input inputmode="numeric" data-set="urlaubAnspruch" value="${st.urlaubAnspruch||''}">
+    <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-set="feiertageNRW" ${st.feiertageNRW?'checked':''}> Feiertage NRW automatisch erkennen</label>
+  </div>
+  <div class="card">
+    <h2>Überstundenkonto</h2>
+    <div class="grid2">
+      <div><label class="f">Startdatum (Montag)</label><input type="date" data-set="startDatum" value="${st.startDatum}"></div>
+      <div><label class="f">Startsaldo (Std.)</label><input inputmode="decimal" data-set="startSaldo" value="${fmt(num(st.startSaldo))}"></div>
+    </div>
+    <div class="muted" style="margin-top:8px">Ab dem Startdatum wird jede abgeschlossene Woche (Ist − Soll) aufs Konto gebucht. Wochen ganz ohne Einträge werden übersprungen.</div>
+  </div>
+  <div class="card">
+    <h2>Schicht-Vorlagen</h2>
+    <div class="tpl muted" style="font-size:11px"><span>Name</span><span>Von</span><span>Bis</span><span>Pause</span><span></span></div>
+    ${st.schichten.map((t,i)=>`<div class="tpl">
+      <input data-tplf="${i}:name" value="${esc(t.name)}"><input type="time" data-tplf="${i}:von" value="${t.von}">
+      <input type="time" data-tplf="${i}:bis" value="${t.bis}"><input inputmode="numeric" data-tplf="${i}:pause" value="${t.pause}">
+      <button class="btn danger small" data-tpldel="${i}">✕</button></div>`).join('')}
+    <button class="btn small" data-act="tpladd">+ Vorlage</button>
+  </div>
+  <div class="card">
+    <h2>Daten</h2>
+    <div class="row">
+      <button class="btn" data-act="export">Backup exportieren</button>
+      <button class="btn" data-act="import">Backup laden</button>
+      <button class="btn" data-act="csv">CSV (Excel)</button>
+    </div>
+    <input type="file" id="impFile" accept=".json,application/json" style="display:none">
+    <div class="muted" style="margin-top:8px">${Object.keys(S.days).length} Tage erfasst. Daten liegen nur auf diesem Gerät – regelmäßig ein Backup in iCloud/Dateien sichern.</div>
+  </div>`;
+}
+
+function setTitle(t,s){ document.getElementById('title').textContent=t; document.getElementById('subtitle').textContent=s; }
+
+/* ---------- Export / Import ---------- */
+function download(name,text,type){
+  const b=new Blob([text],{type}); const a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+function exportCSV(){
+  const lines=['Datum;Tag;Typ;Von;Bis;Pause;Std;Zuschlag;Bemerkung'];
+  for(const k of Object.keys(S.days).sort()){
+    const e=S.days[k], d=parse(k);
+    lines.push([`${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`,WT[d.getDay()],TYPEN[e.typ].name,e.von||'',e.bis||'',e.typ==='arbeit'?e.pause:'',fmt(stunden(e)),e.zuschlag?'ja':'',`"${(e.notiz||'').replace(/"/g,'""')}"`].join(';'));
+  }
+  download(`zeiterfassung-${iso(new Date())}.csv`,'\ufeff'+lines.join('\r\n'),'text/csv');
+}
+
+/* ---------- Events ---------- */
+document.querySelector('.tabbar').addEventListener('click',ev=>{const b=ev.target.closest('[data-tab]'); if(b){tab=b.dataset.tab; render(); scrollTo(0,0);}});
+document.getElementById('sheetBg').addEventListener('click',closeSheet);
+
+app.addEventListener('click',ev=>{
+  const t=ev.target.closest('[data-act],[data-edit],[data-fill],[data-tpldel],[data-month]'); if(!t) return;
+  if(t.dataset.edit) return openEdit(t.dataset.edit);
+  if(t.dataset.month){ curMonth=new Date(curYear,+t.dataset.month,1); tab='monat'; return render(); }
+  if(t.dataset.fill!==undefined){
+    const tp=S.settings.schichten[+t.dataset.fill]; let n=0;
+    for(let i=0;i<6;i++){ const s=iso(addDays(curMon,i)); if(S.days[s]) continue;
+      S.days[s]= feiertag(s) ? {typ:'feiertag'} : {typ:'arbeit',von:tp.von,bis:tp.bis,pause:tp.pause}; n++; }
+    save(); render(); return toast(n?`${n} Tage ausgefüllt`:'Keine leeren Tage');
+  }
+  if(t.dataset.tpldel!==undefined){ if(confirm('Vorlage löschen?')){ S.settings.schichten.splice(+t.dataset.tpldel,1); save(); render(); } return; }
+  switch(t.dataset.act){
+    case 'wprev': curMon=addDays(curMon,-7); break;
+    case 'wnext': curMon=addDays(curMon,7); break;
+    case 'wtoday': curMon=monday(new Date()); break;
+    case 'mprev': curMonth=new Date(curMonth.getFullYear(),curMonth.getMonth()-1,1); break;
+    case 'mnext': curMonth=new Date(curMonth.getFullYear(),curMonth.getMonth()+1,1); break;
+    case 'yprev': curYear--; break;
+    case 'ynext': curYear++; break;
+    case 'copyprev': {
+      const p=new Date(curMonth.getFullYear(),curMonth.getMonth()-1,1), pk=`${p.getFullYear()}-${pad(p.getMonth()+1)}`;
+      if(!S.monate[pk]) return toast('Vormonat ohne Lohnangaben');
+      S.monate[`${curMonth.getFullYear()}-${pad(curMonth.getMonth()+1)}`]={...S.monate[pk]}; save(); toast('Übernommen'); break; }
+    case 'tpladd': S.settings.schichten.push({name:'Neu',von:'08:00',bis:'16:00',pause:30}); save(); break;
+    case 'export': download(`zeiterfassung-backup-${iso(new Date())}.json`,JSON.stringify({app:'zeiterfassung',version:APP_VERSION,...S},null,1),'application/json'); return;
+    case 'import': document.getElementById('impFile').click(); return;
+    case 'csv': exportCSV(); return;
+  }
+  render();
+});
+
+app.addEventListener('change',ev=>{
+  const el=ev.target;
+  if(el.dataset.money){
+    const k=`${curMonth.getFullYear()}-${pad(curMonth.getMonth()+1)}`;
+    S.monate[k]=S.monate[k]||{}; S.monate[k][el.dataset.money]=el.value.trim(); save(); render(); return;
+  }
+  if(el.dataset.set){
+    const k=el.dataset.set;
+    if(el.type==='checkbox') S.settings[k]=el.checked;
+    else if(k==='startDatum') S.settings[k]=el.value ? iso(monday(parse(el.value))) : '';
+    else S.settings[k]=num(el.value);
+    save(); render(); toast('Gespeichert'); return;
+  }
+  if(el.dataset.tplf){
+    const [i,f]=el.dataset.tplf.split(':'); S.settings.schichten[+i][f]= f==='pause'?(parseInt(el.value)||0):el.value; save(); return;
+  }
+  if(el.id==='impFile' && el.files[0]){
+    const fr=new FileReader();
+    fr.onload=()=>{ try{
+      const d=JSON.parse(fr.result); if(!d.days) throw 0;
+      if(!confirm(`Backup mit ${Object.keys(d.days).length} Tagen laden? Vorhandene Einträge mit gleichem Datum werden überschrieben.`)) return;
+      Object.assign(S.days,d.days); Object.assign(S.monate,d.monate||{}); if(d.settings) S.settings=Object.assign(S.settings,d.settings);
+      save(); render(); toast('Backup geladen');
+    }catch(e){ alert('Datei konnte nicht gelesen werden.'); } };
+    fr.readAsText(el.files[0]); el.value='';
+  }
+});
+
+const sheet=document.getElementById('sheet');
+sheet.addEventListener('click',ev=>{
+  const t=ev.target.closest('button'); if(!t) return;
+  if(t.dataset.typ){ readSheet(); edit.typ=t.dataset.typ; if(edit.typ==='arbeit'&&edit.pause==null) edit.pause=30; return drawSheet(); }
+  if(t.dataset.tpl!==undefined){ readSheet(); const tp=S.settings.schichten[+t.dataset.tpl]; Object.assign(edit,{von:tp.von,bis:tp.bis,pause:tp.pause}); return drawSheet(); }
+  switch(t.dataset.act){
+    case 'close': return closeSheet();
+    case 'del': delete S.days[edit._s]; save(); closeSheet(); render(); return toast('Gelöscht');
+    case 'save': {
+      readSheet(); const s=edit._s, e={typ:edit.typ};
+      if(edit.typ==='arbeit'){ if(!edit.von||!edit.bis) return toast('Von und Bis eintragen'); Object.assign(e,{von:edit.von,bis:edit.bis,pause:edit.pause}); if(edit.zuschlag) e.zuschlag=true; }
+      if(edit.notiz) e.notiz=edit.notiz;
+      S.days[s]=e; save(); closeSheet(); render(); return toast('Gespeichert');
+    }
+  }
+});
+sheet.addEventListener('input',()=>{ if(!edit||edit.typ!=='arbeit') return; readSheet(); const c=document.getElementById('eCalc'); if(c) c.textContent=fmt(stunden(edit))+' Std.'; });
+
+/* ---------- Start ---------- */
+load(); render();
+if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
+</script>
+</body>
+</html>

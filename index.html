@@ -114,7 +114,7 @@ h2{font-size:15px;margin:4px 0 8px}
 
 <script>
 'use strict';
-const APP_VERSION = 'v1.0';
+const APP_VERSION = 'v1.1';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -180,17 +180,19 @@ function feiertage(y){
   add(new Date(y,11,25),'1. Weihnachtstag'); add(new Date(y,11,26),'2. Weihnachtstag');
   return holCache[y]=r;
 }
+const zuschlagP = e => e.zuschlag===true ? 100 : (+e.zuschlag||0);
 const feiertag = s => S.settings.feiertageNRW ? feiertage(+s.slice(0,4))[s] : null;
 
 /* ---------- Berechnung ---------- */
 function stunden(e){
-  if(!e) return 0;
+  if(!e || e.typ==='frei') return 0;
+  if(e.std!=null && e.std!=='') return num(e.std);
   if(TYPEN[e.typ]?.gutschrift) return S.settings.sollTag;
   if(e.typ!=='arbeit') return 0;
   let a=toMin(e.von), b=toMin(e.bis);
   if(a==null||b==null) return 0;
   if(b<a) b+=1440;
-  return Math.max(0,(b-a-(+e.pause||0))/60);
+  return Math.max(0,(b-a-(+e.pause||0))/60) * (1 + zuschlagP(e)/100);
 }
 function woche(mo){
   let ist=0, hat=false;
@@ -214,7 +216,7 @@ function monat(y,m){
   for(const [k,e] of Object.entries(S.days)){
     if(!k.startsWith(p)) continue;
     const h=stunden(e); r.std+=h; r[e.typ]=(r[e.typ]||0)+1;
-    if(e.zuschlag) r.zuschlag+=h;
+    if(zuschlagP(e)) r.zuschlag+=h;
   }
   return r;
 }
@@ -239,7 +241,8 @@ function renderWoche(){
     const d=addDays(mo,i), s=iso(d), e=S.days[s], h=stunden(e), ft=feiertag(s);
     let mid;
     if(!e) mid=`<span class="chip ghost">leer</span>`;
-    else if(e.typ==='arbeit') mid=`<div class="t">${e.von||'--:--'} – ${e.bis||'--:--'} <span class="muted">· ${e.pause||0} min Pause</span>${e.zuschlag?' <span class="chip sonder">Zuschlag</span>':''}</div>`;
+    else if(e.typ==='arbeit' && e.von) mid=`<div class="t">${e.von} – ${e.bis} <span class="muted">· ${e.pause||0} min Pause</span>${zuschlagP(e)?` <span class="chip sonder">+${zuschlagP(e)}%</span>`:''}</div>`;
+    else if(e.typ==='arbeit') mid=`<div class="t">Arbeit <span class="muted">· manuell</span></div>`;
     else mid=`<span class="chip ${e.typ}">${TYPEN[e.typ].name}</span>`;
     rows+=`<div class="day ${s===today?'today':''} ${i===6?'sun':''}" data-edit="${s}">
       <div class="d"><b>${WT[d.getDay()]}</b><span>${ddmm(d)}</span></div>
@@ -289,10 +292,14 @@ function drawSheet(){
       <div><label class="f">Bis</label><input type="time" id="eBis" value="${edit.bis||''}"></div>
       <div><label class="f">Pause (min)</label><input type="number" inputmode="numeric" id="ePause" value="${edit.pause??30}"></div>
     </div>
-    <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="eZ" ${edit.zuschlag?'checked':''}> Zuschlag (z. B. Sonntag / Inventur)</label>
+    <div class="grid2">
+      <div><label class="f">Zuschlag</label><select id="eZ">${[0,25,50,100].map(p=>`<option value="${p}" ${zuschlagP(edit)===p?'selected':''}>${p?p+' % (zählt ×'+(1+p/100).toLocaleString('de-DE')+')':'kein'}</option>`).join('')}</select></div>
+      <div><label class="f">Stunden manuell</label><input inputmode="decimal" id="eStd" value="${edit.std!=null?fmt(edit.std):''}" placeholder="aus Zeiten"></div>
+    </div>
     <div class="calc" id="eCalc">${fmt(stunden(edit))} Std.</div>`;
   } else if(TYPEN[edit.typ].gutschrift){
-    body=`<div class="calc">Gutschrift ${fmt(S.settings.sollTag)} Std.</div>`;
+    body=`<label class="f">Stunden manuell</label><input inputmode="decimal" id="eStd" value="${edit.std!=null?fmt(edit.std):''}" placeholder="Standard ${fmt(S.settings.sollTag)}">
+    <div class="calc" id="eCalc">Gutschrift ${fmt(stunden(edit))} Std.</div>`;
   } else {
     body=`<div class="calc">0,00 Std.</div>`;
   }
@@ -309,7 +316,8 @@ function drawSheet(){
 }
 function readSheet(){
   const g=id=>document.getElementById(id);
-  if(g('eVon')){ edit.von=g('eVon').value; edit.bis=g('eBis').value; edit.pause=parseInt(g('ePause').value)||0; edit.zuschlag=g('eZ').checked; }
+  if(g('eVon')){ edit.von=g('eVon').value; edit.bis=g('eBis').value; edit.pause=parseInt(g('ePause').value)||0; edit.zuschlag=+g('eZ').value||0; }
+  if(g('eStd')){ const v=g('eStd').value.trim(); if(v) edit.std=num(v); else delete edit.std; }
   if(g('eNotiz')) edit.notiz=g('eNotiz').value.trim();
 }
 
@@ -323,7 +331,7 @@ function renderMonat(){
   for(let i=1;i<=last;i++){
     const s=`${key}-${pad(i)}`, e=S.days[s]; if(!e) continue;
     const d=parse(s);
-    list+=`<tr data-edit="${s}"><td>${WT[d.getDay()]} ${ddmm(d)}</td><td style="text-align:left">${e.typ==='arbeit'?`${e.von}–${e.bis}`:`<span class="chip ${e.typ}">${TYPEN[e.typ].name}</span>`}</td><td>${fmt(stunden(e))}</td></tr>`;
+    list+=`<tr data-edit="${s}"><td>${WT[d.getDay()]} ${ddmm(d)}</td><td style="text-align:left">${e.typ==='arbeit'?(e.von?`${e.von}–${e.bis}`:'manuell'):`<span class="chip ${e.typ}">${TYPEN[e.typ].name}</span>`}</td><td>${fmt(stunden(e))}</td></tr>`;
   }
   app.innerHTML=`
   <div class="card nav">
@@ -340,11 +348,14 @@ function renderMonat(){
     <div class="grid2">
       <div><label class="f">Brutto (€)</label><input inputmode="decimal" data-money="brutto" value="${g.brutto??''}" placeholder="0,00"></div>
       <div><label class="f">Netto (€)</label><input inputmode="decimal" data-money="netto" value="${g.netto??''}" placeholder="0,00"></div>
+      <div><label class="f">Sonderzahlung netto (€)</label><input inputmode="decimal" data-money="sonder" value="${g.sonder??''}" placeholder="0,00"></div>
+      <div><label class="f">Art</label><input data-money="sonderText" value="${esc(g.sonderText??'')}" placeholder="z. B. Urlaubsgeld"></div>
     </div>
     <div class="grid2" style="margin-top:10px">
       <div class="calc">Brutto/Std<br>${br&&r.std?eur(br/r.std):'–'}</div>
       <div class="calc">Netto/Std<br>${ne&&r.std?eur(ne/r.std):'–'}</div>
     </div>
+    ${num(g.sonder)?`<div class="muted" style="margin-top:8px">+ ${esc(g.sonderText||'Sonderzahlung')}: <b>${eur(num(g.sonder))}</b> · ausgezahlt gesamt ${eur(ne+num(g.sonder))}</div>`:''}
     <div class="muted" style="margin-top:8px">Feiertage: ${r.feiertag} · Freie Tage: ${r.frei}${r.zuschlag?` · Zuschlagsstunden: ${fmt(r.zuschlag)}`:''}</div>
     <div class="row" style="margin-top:8px"><button class="btn small" data-act="copyprev">Lohn vom Vormonat übernehmen</button></div>
   </div>
@@ -434,7 +445,7 @@ function exportCSV(){
   const lines=['Datum;Tag;Typ;Von;Bis;Pause;Std;Zuschlag;Bemerkung'];
   for(const k of Object.keys(S.days).sort()){
     const e=S.days[k], d=parse(k);
-    lines.push([`${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`,WT[d.getDay()],TYPEN[e.typ].name,e.von||'',e.bis||'',e.typ==='arbeit'?e.pause:'',fmt(stunden(e)),e.zuschlag?'ja':'',`"${(e.notiz||'').replace(/"/g,'""')}"`].join(';'));
+    lines.push([`${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`,WT[d.getDay()],TYPEN[e.typ].name,e.von||'',e.bis||'',e.typ==='arbeit'&&e.von?e.pause:'',fmt(stunden(e)),zuschlagP(e)?zuschlagP(e)+'%':'',`"${(e.notiz||'').replace(/"/g,'""')}"`].join(';'));
   }
   download(`zeiterfassung-${iso(new Date())}.csv`,'\ufeff'+lines.join('\r\n'),'text/csv');
 }
@@ -512,13 +523,18 @@ sheet.addEventListener('click',ev=>{
     case 'del': delete S.days[edit._s]; save(); closeSheet(); render(); return toast('Gelöscht');
     case 'save': {
       readSheet(); const s=edit._s, e={typ:edit.typ};
-      if(edit.typ==='arbeit'){ if(!edit.von||!edit.bis) return toast('Von und Bis eintragen'); Object.assign(e,{von:edit.von,bis:edit.bis,pause:edit.pause}); if(edit.zuschlag) e.zuschlag=true; }
+      if(edit.typ==='arbeit'){
+        if((!edit.von||!edit.bis) && edit.std==null) return toast('Von/Bis oder Stunden eintragen');
+        if(edit.von&&edit.bis) Object.assign(e,{von:edit.von,bis:edit.bis,pause:edit.pause});
+        if(edit.zuschlag) e.zuschlag=edit.zuschlag; }
+      if(edit.std!=null && edit.typ!=='frei') e.std=edit.std;
       if(edit.notiz) e.notiz=edit.notiz;
       S.days[s]=e; save(); closeSheet(); render(); return toast('Gespeichert');
     }
   }
 });
-sheet.addEventListener('input',()=>{ if(!edit||edit.typ!=='arbeit') return; readSheet(); const c=document.getElementById('eCalc'); if(c) c.textContent=fmt(stunden(edit))+' Std.'; });
+sheet.addEventListener('input',()=>{ if(!edit) return; readSheet(); const c=document.getElementById('eCalc'); if(c) c.textContent=(edit.typ==='arbeit'?'':'Gutschrift ')+fmt(stunden(edit))+' Std.'; });
+sheet.addEventListener('change',()=>sheet.dispatchEvent(new Event('input')));
 
 /* ---------- Start ---------- */
 load(); render();

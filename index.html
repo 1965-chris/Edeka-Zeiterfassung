@@ -50,7 +50,8 @@ main{padding:0 16px 16px;max-width:640px;margin:0 auto}
 .day .d b{display:block;font-size:15px}
 .day .d span{font-size:12px;color:var(--muted)}
 .day .m{flex:1;min-width:0}
-.day .m .t{font-variant-numeric:tabular-nums}
+.day .m .t{font-variant-numeric:tabular-nums;white-space:nowrap}
+.day .m .t .muted{font-size:12px}
 .day .m .n{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .day .h{font-weight:700;font-variant-numeric:tabular-nums;min-width:48px;text-align:right}
 .day.today .d b{color:var(--accent)}
@@ -68,7 +69,13 @@ main{padding:0 16px 16px;max-width:640px;margin:0 auto}
 .btn.on{background:var(--accent);color:#fff}
 label.f{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
 input,select,textarea{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
-input[type=checkbox]{width:auto}
+input,select{min-width:0;max-width:100%;-webkit-appearance:none;appearance:none;min-height:44px}
+input[type=date],input[type=time]{display:block;text-align:left;line-height:22px}
+input[type=date]::-webkit-date-and-time-value,input[type=time]::-webkit-date-and-time-value{text-align:left}
+input[type=checkbox]{width:22px;height:22px;min-height:0;-webkit-appearance:auto;appearance:auto;flex:none}
+.grid2>*,.grid3>*{min-width:0}
+.hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.todaybtn{border:0;background:var(--accent);color:#fff;border-radius:999px;padding:8px 14px;font-size:14px;font-weight:700;flex:none}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:14px}
@@ -93,12 +100,18 @@ h2{font-size:15px;margin:4px 0 8px}
 .calc{margin-top:10px;padding:10px;border-radius:10px;background:var(--accent-soft);color:var(--accent);font-weight:700;text-align:center}
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%);background:var(--text);color:var(--bg);padding:9px 16px;border-radius:999px;font-size:14px;z-index:30;opacity:0;transition:opacity .2s;pointer-events:none}
 .toast.show{opacity:1}
-.tpl{display:grid;grid-template-columns:1.3fr 1fr 1fr .8fr auto;gap:6px;align-items:center;margin-bottom:6px}
-.tpl input{padding:8px}
+.tpl{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 64px 40px;gap:6px 8px;align-items:end;padding:10px 0;border-bottom:1px solid var(--line)}
+.tpl:last-of-type{border-bottom:0}
+.tpl>*{min-width:0}
+.tpl .name{grid-column:1/-1}
+.tpl input{width:100%}
+.tpl label{display:block;font-size:11px;color:var(--muted);margin-bottom:3px}
+.tpl input{padding:8px 10px}
+.tpl .btn{height:44px;padding:0}
 </style>
 </head>
 <body>
-<header><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></header>
+<header class="hdr"><div><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></div><button class="todaybtn" id="todayBtn" hidden>Heute</button></header>
 <main id="app"></main>
 
 <nav class="tabbar">
@@ -114,7 +127,7 @@ h2{font-size:15px;margin:4px 0 8px}
 
 <script>
 'use strict';
-const APP_VERSION = 'v1.1';
+const APP_VERSION = 'v1.2';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -241,7 +254,7 @@ function renderWoche(){
     const d=addDays(mo,i), s=iso(d), e=S.days[s], h=stunden(e), ft=feiertag(s);
     let mid;
     if(!e) mid=`<span class="chip ghost">leer</span>`;
-    else if(e.typ==='arbeit' && e.von) mid=`<div class="t">${e.von} – ${e.bis} <span class="muted">· ${e.pause||0} min Pause</span>${zuschlagP(e)?` <span class="chip sonder">+${zuschlagP(e)}%</span>`:''}</div>`;
+    else if(e.typ==='arbeit' && e.von) mid=`<div class="t">${e.von} – ${e.bis} <span class="muted">· ${e.pause||0}′ P.</span>${zuschlagP(e)?` <span class="chip sonder">+${zuschlagP(e)}%</span>`:''}</div>`;
     else if(e.typ==='arbeit') mid=`<div class="t">Arbeit <span class="muted">· manuell</span></div>`;
     else mid=`<span class="chip ${e.typ}">${TYPEN[e.typ].name}</span>`;
     rows+=`<div class="day ${s===today?'today':''} ${i===6?'sun':''}" data-edit="${s}">
@@ -253,7 +266,7 @@ function renderWoche(){
   app.innerHTML=`
   <div class="card nav">
     <button class="iconbtn" data-act="wprev">‹</button>
-    <div style="text-align:center"><b>KW ${kw(mo)}</b><small>${ddmm(mo)} – ${ddmm(so)}${so.getFullYear()}</small></div>
+    <div style="text-align:center" data-act="wtoday"><b>KW ${kw(mo)}</b><small>${ddmm(mo)} – ${ddmm(so)}${so.getFullYear()}</small></div>
     <button class="iconbtn" data-act="wnext">›</button>
   </div>
   <div class="stats">
@@ -414,11 +427,12 @@ function renderEinst(){
   </div>
   <div class="card">
     <h2>Schicht-Vorlagen</h2>
-    <div class="tpl muted" style="font-size:11px"><span>Name</span><span>Von</span><span>Bis</span><span>Pause</span><span></span></div>
     ${st.schichten.map((t,i)=>`<div class="tpl">
-      <input data-tplf="${i}:name" value="${esc(t.name)}"><input type="time" data-tplf="${i}:von" value="${t.von}">
-      <input type="time" data-tplf="${i}:bis" value="${t.bis}"><input inputmode="numeric" data-tplf="${i}:pause" value="${t.pause}">
-      <button class="btn danger small" data-tpldel="${i}">✕</button></div>`).join('')}
+      <div class="name"><label>Name</label><input data-tplf="${i}:name" value="${esc(t.name)}"></div>
+      <div><label>Von</label><input type="time" data-tplf="${i}:von" value="${t.von}"></div>
+      <div><label>Bis</label><input type="time" data-tplf="${i}:bis" value="${t.bis}"></div>
+      <div><label>Pause</label><input inputmode="numeric" data-tplf="${i}:pause" value="${t.pause}"></div>
+      <button class="btn danger" data-tpldel="${i}" aria-label="Löschen">✕</button></div>`).join('')}
     <button class="btn small" data-act="tpladd">+ Vorlage</button>
   </div>
   <div class="card">
@@ -433,7 +447,17 @@ function renderEinst(){
   </div>`;
 }
 
-function setTitle(t,s){ document.getElementById('title').textContent=t; document.getElementById('subtitle').textContent=s; }
+function setTitle(t,s){
+  document.getElementById('title').textContent=t; document.getElementById('subtitle').textContent=s;
+  const n=new Date(); let off=false;
+  if(tab==='woche') off = curMon.getTime()!==monday(n).getTime();
+  if(tab==='monat') off = curMonth.getFullYear()!==n.getFullYear() || curMonth.getMonth()!==n.getMonth();
+  if(tab==='jahr') off = curYear!==n.getFullYear();
+  document.getElementById('todayBtn').hidden=!off;
+}
+document.getElementById('todayBtn').addEventListener('click',()=>{
+  const n=new Date(); curMon=monday(n); curMonth=new Date(n.getFullYear(),n.getMonth(),1); curYear=n.getFullYear(); render(); scrollTo(0,0);
+});
 
 /* ---------- Export / Import ---------- */
 function download(name,text,type){

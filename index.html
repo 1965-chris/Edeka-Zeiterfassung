@@ -74,6 +74,8 @@ input[type=date],input[type=time]{display:block;text-align:left;line-height:22px
 input[type=date]::-webkit-date-and-time-value,input[type=time]::-webkit-date-and-time-value{text-align:left}
 input[type=checkbox]{width:22px;height:22px;min-height:0;-webkit-appearance:auto;appearance:auto;flex:none}
 .grid2>*,.grid3>*{min-width:0}
+.grid2,.grid3{align-items:end}
+.hint{font-size:12px;color:var(--muted);margin-top:6px}
 .hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
 .todaybtn{border:0;background:var(--accent);color:#fff;border-radius:999px;padding:8px 14px;font-size:14px;font-weight:700;flex:none}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
@@ -127,7 +129,7 @@ h2{font-size:15px;margin:4px 0 8px}
 
 <script>
 'use strict';
-const APP_VERSION = 'v1.2';
+const APP_VERSION = 'v1.3';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -385,7 +387,9 @@ function renderJahr(){
     if(!r.std && !br) { rows+=`<tr class="muted"><td>${MON[m].slice(0,3)}</td><td>–</td><td>–</td><td>–</td><td>–</td></tr>`; continue; }
     rows+=`<tr data-month="${m}"><td>${MON[m].slice(0,3)}</td><td>${fmt(r.std)}</td><td>${br&&r.std?eur(br/r.std):'–'}</td><td>${ne&&r.std?eur(ne/r.std):'–'}</td><td>${r.urlaub||''}</td></tr>`;
   }
-  const ans=num(S.settings.urlaubAnspruch);
+  S.urlaubJahr=S.urlaubJahr||{};
+  const ansStd=num(S.settings.urlaubAnspruch), eigen=S.urlaubJahr[y]!=null && S.urlaubJahr[y]!=='';
+  const ans= eigen ? num(S.urlaubJahr[y]) : ansStd;
   const saldo=konto(addDays(monday(new Date()),0));
   app.innerHTML=`
   <div class="card nav"><button class="iconbtn" data-act="yprev">‹</button><b>${y}</b><button class="iconbtn" data-act="ynext">›</button></div>
@@ -400,7 +404,10 @@ function renderJahr(){
     <tbody>${rows}</tbody>
     <tfoot><tr><td>Σ</td><td>${fmt(T.std)}</td><td>${T.br&&T.std?eur(T.br/T.std):'–'}</td><td>${T.ne&&T.std?eur(T.ne/T.std):'–'}</td><td>${T.urlaub}</td></tr></tfoot>
   </table>
-  ${ans?`<div class="muted" style="margin-top:8px">Resturlaub: <b>${ans-T.urlaub} Tage</b></div>`:''}
+  <div class="grid2" style="margin-top:12px">
+    <div><label class="f">Anspruch ${y} (Tage)</label><input inputmode="numeric" data-ujahr="${y}" value="${eigen?S.urlaubJahr[y]:''}" placeholder="${ansStd||'–'} (Standard)"></div>
+    <div class="calc" style="margin:0">Resturlaub<br>${ans?`${ans-T.urlaub} Tage`:'–'}</div>
+  </div>
   <div class="muted" style="margin-top:4px">Konto = Stand bis Ende letzter Woche.</div></div>`;
 }
 
@@ -412,9 +419,11 @@ function renderEinst(){
     <h2>Arbeitszeit</h2>
     <div class="grid2">
       <div><label class="f">Soll pro Woche (Std.)</label><input inputmode="decimal" data-set="wochenSoll" value="${fmt(st.wochenSoll)}"></div>
-      <div><label class="f">Gutschrift Urlaub/Feiertag/Krank (Std.)</label><input inputmode="decimal" data-set="sollTag" value="${fmt(st.sollTag)}"></div>
+      <div><label class="f">Gutschrift pro Tag (Std.)</label><input inputmode="decimal" data-set="sollTag" value="${fmt(st.sollTag)}"></div>
     </div>
+    <div class="hint">Gutschrift gilt für Urlaub, Feiertag und Krank.</div>
     <label class="f">Urlaubsanspruch pro Jahr (Tage)</label><input inputmode="numeric" data-set="urlaubAnspruch" value="${st.urlaubAnspruch||''}">
+    <div class="hint">Standardwert. Abweichende Jahre (z. B. anteilig im Eintrittsjahr) im Tab „Jahr“ anpassen.</div>
     <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-set="feiertageNRW" ${st.feiertageNRW?'checked':''}> Feiertage NRW automatisch erkennen</label>
   </div>
   <div class="card">
@@ -515,6 +524,11 @@ app.addEventListener('change',ev=>{
     const k=`${curMonth.getFullYear()}-${pad(curMonth.getMonth()+1)}`;
     S.monate[k]=S.monate[k]||{}; S.monate[k][el.dataset.money]=el.value.trim(); save(); render(); return;
   }
+  if(el.dataset.ujahr){
+    S.urlaubJahr=S.urlaubJahr||{}; const v=el.value.trim();
+    if(v==='') delete S.urlaubJahr[el.dataset.ujahr]; else S.urlaubJahr[el.dataset.ujahr]=num(v);
+    save(); render(); toast('Gespeichert'); return;
+  }
   if(el.dataset.set){
     const k=el.dataset.set;
     if(el.type==='checkbox') S.settings[k]=el.checked;
@@ -530,7 +544,7 @@ app.addEventListener('change',ev=>{
     fr.onload=()=>{ try{
       const d=JSON.parse(fr.result); if(!d.days) throw 0;
       if(!confirm(`Backup mit ${Object.keys(d.days).length} Tagen laden? Vorhandene Einträge mit gleichem Datum werden überschrieben.`)) return;
-      Object.assign(S.days,d.days); Object.assign(S.monate,d.monate||{}); if(d.settings) S.settings=Object.assign(S.settings,d.settings);
+      Object.assign(S.days,d.days); Object.assign(S.monate,d.monate||{}); if(d.urlaubJahr) S.urlaubJahr=Object.assign(S.urlaubJahr||{},d.urlaubJahr); if(d.settings) S.settings=Object.assign(S.settings,d.settings);
       save(); render(); toast('Backup geladen');
     }catch(e){ alert('Datei konnte nicht gelesen werden.'); } };
     fr.readAsText(el.files[0]); el.value='';

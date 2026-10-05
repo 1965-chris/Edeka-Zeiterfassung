@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Zeiterfassung</title>
 <meta name="theme-color" content="#1f6f5c">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -27,6 +27,10 @@
   }
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{touch-action:manipulation;-webkit-text-size-adjust:100%}
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input,textarea,select{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+button{touch-action:manipulation}
 html,body{margin:0;background:var(--bg);color:var(--text);
   font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif}
 body{padding:0 0 calc(72px + env(safe-area-inset-bottom))}
@@ -76,7 +80,10 @@ input[type=checkbox]{width:22px;height:22px;min-height:0;-webkit-appearance:auto
 .grid2>*,.grid3>*{min-width:0}
 .grid2,.grid3{align-items:end}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
-.hdr{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+.hdr .top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
+#navbar:empty{display:none}
+#navbar .card{margin:10px 0 0}
+header{max-width:640px;margin:0 auto;box-shadow:0 6px 8px -8px rgba(0,0,0,.15)}
 .todaybtn{border:0;background:var(--accent);color:#fff;border-radius:999px;padding:8px 14px;font-size:14px;font-weight:700;flex:none}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -113,7 +120,7 @@ h2{font-size:15px;margin:4px 0 8px}
 </style>
 </head>
 <body>
-<header class="hdr"><div><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></div><button class="todaybtn" id="todayBtn" hidden>Heute</button></header>
+<header class="hdr"><div class="top"><div><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></div><button class="todaybtn" id="todayBtn" hidden>Heute</button></div><div id="navbar"></div></header>
 <main id="app"></main>
 
 <nav class="tabbar">
@@ -129,7 +136,7 @@ h2{font-size:15px;margin:4px 0 8px}
 
 <script>
 'use strict';
-const APP_VERSION = 'v1.4';
+const APP_VERSION = 'v1.5';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -265,12 +272,12 @@ function renderWoche(){
       <div class="h">${e?fmt(h):''}</div></div>`;
   }
   const saldoNeu = k + (w.hat?w.diff:0);
-  app.innerHTML=`
-  <div class="card nav">
+  setNav(`<div class="card nav">
     <button class="iconbtn" data-act="wprev">‹</button>
     <div style="text-align:center" data-act="wtoday"><b>KW ${kw(mo)}</b><small>${ddmm(mo)} – ${ddmm(so)}${so.getFullYear()}</small></div>
     <button class="iconbtn" data-act="wnext">›</button>
-  </div>
+  </div>`);
+  app.innerHTML=`
   <div class="stats">
     <div class="stat"><div class="v">${fmt(w.ist)}</div><div class="l">Ist</div></div>
     <div class="stat"><div class="v">${fmt(w.soll)}</div><div class="l">Soll</div></div>
@@ -282,7 +289,7 @@ function renderWoche(){
     <h2>Woche ausfüllen</h2>
     <div class="muted" style="margin-bottom:8px">Füllt leere Tage Mo–Sa mit der Schicht, Feiertage werden automatisch gesetzt. Den freien Tag danach einfach antippen.</div>
     <div class="row">${S.settings.schichten.map((t,i)=>`<button class="btn small" data-fill="${i}">${esc(t.name)}</button>`).join('')}
-    ${istAktuell?'':'<button class="btn small" data-act="wtoday">Heute</button>'}</div>
+</div>
   </div>`;
 }
 
@@ -348,10 +355,10 @@ function renderMonat(){
     const d=parse(s);
     list+=`<tr data-edit="${s}"><td>${WT[d.getDay()]} ${ddmm(d)}</td><td style="text-align:left">${e.typ==='arbeit'?(e.von?`${e.von}–${e.bis}`:'manuell'):`<span class="chip ${e.typ}">${TYPEN[e.typ].name}</span>`}</td><td>${fmt(stunden(e))}</td></tr>`;
   }
-  app.innerHTML=`
-  <div class="card nav">
+  setNav(`<div class="card nav">
     <button class="iconbtn" data-act="mprev">‹</button><b>${MON[m]} ${y}</b><button class="iconbtn" data-act="mnext">›</button>
-  </div>
+  </div>`);
+  app.innerHTML=`
   <div class="stats">
     <div class="stat"><div class="v">${fmt(r.std)}</div><div class="l">Std.</div></div>
     <div class="stat"><div class="v">${r.arbeit}</div><div class="l">Arbeit</div></div>
@@ -399,8 +406,8 @@ function renderJahr(){
   const ansStd=num(S.settings.urlaubAnspruch), eigen=S.urlaubJahr[y]!=null && S.urlaubJahr[y]!=='';
   const ans= eigen ? num(S.urlaubJahr[y]) : ansStd;
   const saldo=konto(addDays(monday(new Date()),0));
+  setNav(`<div class="card nav"><button class="iconbtn" data-act="yprev">‹</button><b>${y}</b><button class="iconbtn" data-act="ynext">›</button></div>`);
   app.innerHTML=`
-  <div class="card nav"><button class="iconbtn" data-act="yprev">‹</button><b>${y}</b><button class="iconbtn" data-act="ynext">›</button></div>
   <div class="stats">
     <div class="stat"><div class="v">${fmt(T.std)}</div><div class="l">Std.</div></div>
     <div class="stat"><div class="v">${T.urlaub}${ans?`/${ans}`:''}</div><div class="l">Urlaub</div></div>
@@ -426,7 +433,7 @@ function renderJahr(){
 
 /* ---------- Einstellungen ---------- */
 function renderEinst(){
-  const st=S.settings; setTitle('Einstellungen', APP_VERSION);
+  const st=S.settings; setNav(''); setTitle('Einstellungen', APP_VERSION);
   app.innerHTML=`
   <div class="card">
     <h2>Arbeitszeit</h2>
@@ -469,6 +476,7 @@ function renderEinst(){
   </div>`;
 }
 
+function setNav(x){ document.getElementById('navbar').innerHTML=x; }
 function setTitle(t,s){
   document.getElementById('title').textContent=t; document.getElementById('subtitle').textContent=s;
   const n=new Date(); let off=false;
@@ -500,7 +508,7 @@ function exportCSV(){
 document.querySelector('.tabbar').addEventListener('click',ev=>{const b=ev.target.closest('[data-tab]'); if(b){tab=b.dataset.tab; render(); scrollTo(0,0);}});
 document.getElementById('sheetBg').addEventListener('click',closeSheet);
 
-app.addEventListener('click',ev=>{
+const onClick=ev=>{
   const t=ev.target.closest('[data-act],[data-edit],[data-fill],[data-tpldel],[data-month]'); if(!t) return;
   if(t.dataset.edit) return openEdit(t.dataset.edit);
   if(t.dataset.month){ curMonth=new Date(curYear,+t.dataset.month,1); tab='monat'; return render(); }
@@ -529,7 +537,11 @@ app.addEventListener('click',ev=>{
     case 'csv': exportCSV(); return;
   }
   render();
-});
+};
+app.addEventListener('click',onClick);
+document.getElementById('navbar').addEventListener('click',onClick);
+document.addEventListener('gesturestart',e=>e.preventDefault());
+document.addEventListener('dblclick',e=>e.preventDefault(),{passive:false});
 
 app.addEventListener('change',ev=>{
   const el=ev.target;

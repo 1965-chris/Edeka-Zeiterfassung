@@ -136,7 +136,7 @@ h2{font-size:15px;margin:4px 0 8px}
 
 <script>
 'use strict';
-const APP_VERSION = 'v1.8';
+const APP_VERSION = 'v1.9';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -154,7 +154,7 @@ const TYPEN = {
 const DEFAULT = {
   settings:{
     sollTag:6.25, wochenSoll:37.5, startDatum:'', startSaldo:0, urlaubAnspruch:0, feiertageNRW:true,
-    kal:{an:false, name:'Schicht löschen', typen:['frei','abbau']},
+    kal:{an:false, name:'Schicht löschen', typen:['frei','abbau'], urlaubAn:false, urlaubName:'Urlaub eintragen'},
     schichten:[
       {name:'Früh',  von:'05:45', bis:'13:45', pause:30},
       {name:'Spät',  von:'13:15', bis:'21:15', pause:30},
@@ -293,6 +293,11 @@ function renderWoche(){
     <div class="muted" style="margin-bottom:8px">Füllt leere Tage Mo–Sa mit der Schicht, Feiertage werden automatisch gesetzt. Den freien Tag danach einfach antippen.</div>
     <div class="row">${S.settings.schichten.map((t,i)=>`<button class="btn small" data-fill="${i}">${esc(t.name)}</button>`).join('')}
 </div>
+  </div>
+  <div class="card">
+    <h2>Zeitraum eintragen</h2>
+    <div class="muted" style="margin-bottom:8px">Urlaub, Krank oder Frei für mehrere Tage auf einmal – mit nur einem Kalender-Durchgang.</div>
+    <button class="btn" data-act="range">📅 Zeitraum eintragen…</button>
   </div>`;
 }
 
@@ -488,7 +493,9 @@ function renderEinst(){
     <label class="f">Name des Kurzbefehls</label><input data-kal="name" value="${esc(st.kal.name)}">
     <label class="f">Auslösen bei</label>
     <div class="row">${['frei','abbau','urlaub','krank','sonder'].map(t=>`<button class="btn small ${st.kal.typen.includes(t)?'on':''}" data-kaltyp="${t}">${TYPEN[t].name}</button>`).join('')}</div>
-    <div class="hint">Beim Speichern startet die App den Kurzbefehl mit dem Datum (TT.MM.JJJJ). Der Kurzbefehl löscht den Termin, danach zurück in die App wechseln.</div>
+    <div class="hint">Beim Speichern startet die App den Kurzbefehl mit dem Datum (TT.MM.JJJJ, bei Zeiträumen ein Datum pro Zeile). Danach zurück in die App wechseln.</div>
+    <label class="f" style="display:flex;gap:8px;align-items:center;margin-top:14px"><input type="checkbox" data-kal="urlaubAn" ${st.kal.urlaubAn?'checked':''}> Bei Urlaub: Schicht löschen <b>und</b> Urlaub eintragen</label>
+    <label class="f">Name des Urlaubs-Kurzbefehls</label><input data-kal="urlaubName" value="${esc(st.kal.urlaubName)}">
     <div class="row" style="margin-top:8px"><button class="btn small" data-act="kaltest">Kurzbefehl testen (heute)</button></div>
   </div>
   <div class="card">
@@ -503,9 +510,57 @@ function renderEinst(){
   </div>`;
 }
 
-function kalLoeschen(s){
-  const d=parse(s), t=`${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
-  location.href='shortcuts://run-shortcut?name='+encodeURIComponent(S.settings.kal.name)+'&input=text&text='+encodeURIComponent(t);
+const deDat = s => { const d=parse(s); return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`; };
+function runShortcut(name, dates){
+  location.href='shortcuts://run-shortcut?name='+encodeURIComponent(name)+'&input=text&text='+encodeURIComponent(dates.map(deDat).join('\n'));
+}
+function kalLoeschen(s){ runShortcut(S.settings.kal.name,[s]); }
+/* entscheidet, welcher Kurzbefehl für einen Typ läuft */
+function kalSync(typ, dates){
+  const k=S.settings.kal||{}; if(!k.an || !dates.length) return false;
+  if(typ==='urlaub' && k.urlaubAn && k.urlaubName){ setTimeout(()=>runShortcut(k.urlaubName,dates),350); return true; }
+  if(k.name && (k.typen||[]).includes(typ)){ setTimeout(()=>runShortcut(k.name,dates),350); return true; }
+  return false;
+}
+/* ---------- Zeitraum ---------- */
+let rng=null;
+function openRange(){
+  edit=null;
+  rng={typ:'urlaub', von:iso(curMon), bis:iso(addDays(curMon,5)), ohneSo:true, ohneFt:true};
+  drawRange();
+  document.getElementById('sheet').classList.add('open'); document.getElementById('sheetBg').classList.add('open');
+}
+function rangeDays(){
+  const out=[]; if(!rng.von||!rng.bis) return out;
+  let a=parse(rng.von), b=parse(rng.bis); if(b<a) [a,b]=[b,a];
+  for(let d=a; d<=b && out.length<366; d=addDays(d,1)){
+    const s=iso(d);
+    if(rng.ohneSo && d.getDay()===0) continue;
+    if(rng.ohneFt && feiertag(s)) continue;
+    out.push(s);
+  }
+  return out;
+}
+function drawRange(){
+  const typs=['urlaub','krank','frei','abbau','sonder'], n=rangeDays();
+  document.getElementById('sheet').innerHTML=`
+    <div class="nav" style="margin-bottom:10px"><b>Zeitraum eintragen</b><button class="iconbtn" data-act="close">✕</button></div>
+    <div class="seg">${typs.map(t=>`<button data-rtyp="${t}" class="${rng.typ===t?'on':''}">${TYPEN[t].name}</button>`).join('')}</div>
+    <div class="grid2">
+      <div><label class="f">Von</label><input type="date" id="rVon" value="${rng.von}"></div>
+      <div><label class="f">Bis</label><input type="date" id="rBis" value="${rng.bis}"></div>
+    </div>
+    <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="rSo" ${rng.ohneSo?'checked':''}> Sonntage auslassen</label>
+    <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="rFt" ${rng.ohneFt?'checked':''}> Feiertage auslassen (bleiben Feiertag)</label>
+    <div class="calc" id="rCalc">${n.length} Tage als ${TYPEN[rng.typ].name}</div>
+    <div class="hint">Vorhandene Einträge an diesen Tagen werden überschrieben.</div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end">
+      <button class="btn primary" data-act="rsave" style="flex:1;max-width:260px">Eintragen</button>
+    </div>`;
+}
+function readRange(){
+  const g=id=>document.getElementById(id); if(!g('rVon')) return;
+  rng.von=g('rVon').value; rng.bis=g('rBis').value; rng.ohneSo=g('rSo').checked; rng.ohneFt=g('rFt').checked;
 }
 function setNav(x){ document.getElementById('navbar').innerHTML=x; }
 function setTitle(t,s){
@@ -567,6 +622,7 @@ const onClick=ev=>{
     case 'export': download(`zeiterfassung-backup-${iso(new Date())}.json`,JSON.stringify({app:'zeiterfassung',version:APP_VERSION,...S},null,1),'application/json'); return;
     case 'import': document.getElementById('impFile').click(); return;
     case 'csv': exportCSV(); return;
+    case 'range': openRange(); return;
     case 'kaltest': if(!confirm('Kurzbefehl mit dem heutigen Datum starten? Dabei wird die heutige Schicht im Kalender gelöscht!')) return; kalLoeschen(iso(new Date())); return;
   }
   render();
@@ -613,10 +669,22 @@ app.addEventListener('change',ev=>{
 const sheet=document.getElementById('sheet');
 sheet.addEventListener('click',ev=>{
   const t=ev.target.closest('button'); if(!t) return;
+  if(t.dataset.rtyp){ readRange(); rng.typ=t.dataset.rtyp; return drawRange(); }
   if(t.dataset.typ){ readSheet(); edit.typ=t.dataset.typ; if(edit.typ==='arbeit'&&edit.pause==null) edit.pause=30; return drawSheet(); }
   if(t.dataset.tpl!==undefined){ readSheet(); const tp=S.settings.schichten[+t.dataset.tpl]; Object.assign(edit,{von:tp.von,bis:tp.bis,pause:tp.pause}); return drawSheet(); }
   switch(t.dataset.act){
-    case 'close': return closeSheet();
+    case 'close': rng=null; return closeSheet();
+    case 'rsave': {
+      readRange(); const tage=rangeDays();
+      if(!tage.length) return toast('Keine Tage im Zeitraum');
+      const neu=[];
+      for(const s of tage){ if(S.days[s]?.typ!==rng.typ) neu.push(s); S.days[s]={typ:rng.typ}; }
+      if(rng.ohneFt){ let a=parse(rng.von), b=parse(rng.bis); if(b<a) [a,b]=[b,a];
+        for(let d=a; d<=b; d=addDays(d,1)){ const s=iso(d); if(feiertag(s) && !S.days[s]) S.days[s]={typ:'feiertag'}; } }
+      const typ=rng.typ; rng=null;
+      save(); closeSheet(); render(); toast(`${tage.length} Tage eingetragen`);
+      kalSync(typ, neu); return;
+    }
     case 'del': delete S.days[edit._s]; save(); closeSheet(); render(); return toast('Gelöscht');
     case 'save': {
       readSheet(); const s=edit._s, e={typ:edit.typ};
@@ -628,13 +696,12 @@ sheet.addEventListener('click',ev=>{
       if(edit.notiz) e.notiz=edit.notiz;
       const alt=S.days[s]?.typ;
       S.days[s]=e; save(); closeSheet(); render(); toast('Gespeichert');
-      const k=S.settings.kal||{};
-      if(k.an && k.name && alt!==e.typ && (k.typen||[]).includes(e.typ)) setTimeout(()=>kalLoeschen(s),350);
+      if(alt!==e.typ) kalSync(e.typ,[s]);
       return;
     }
   }
 });
-sheet.addEventListener('input',()=>{ if(!edit) return; readSheet(); const c=document.getElementById('eCalc'); if(c) c.textContent=(edit.typ==='arbeit'?'':'Gutschrift ')+fmt(stunden(edit))+' Std.'; });
+sheet.addEventListener('input',()=>{ if(rng){ readRange(); const c=document.getElementById('rCalc'); if(c) c.textContent=`${rangeDays().length} Tage als ${TYPEN[rng.typ].name}`; return; } if(!edit) return; readSheet(); const c=document.getElementById('eCalc'); if(c) c.textContent=(edit.typ==='arbeit'?'':'Gutschrift ')+fmt(stunden(edit))+' Std.'; });
 sheet.addEventListener('change',()=>sheet.dispatchEvent(new Event('input')));
 
 /* ---------- Start ---------- */

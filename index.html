@@ -136,7 +136,7 @@ h2{font-size:15px;margin:4px 0 8px}
 
 <script>
 'use strict';
-const APP_VERSION = 'v1.7';
+const APP_VERSION = 'v1.8';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -154,6 +154,7 @@ const TYPEN = {
 const DEFAULT = {
   settings:{
     sollTag:6.25, wochenSoll:37.5, startDatum:'', startSaldo:0, urlaubAnspruch:0, feiertageNRW:true,
+    kal:{an:false, name:'Schicht löschen', typen:['frei','abbau']},
     schichten:[
       {name:'Früh',  von:'05:45', bis:'13:45', pause:30},
       {name:'Spät',  von:'13:15', bis:'21:15', pause:30},
@@ -167,6 +168,7 @@ function load(){
   try{ S = JSON.parse(localStorage.getItem(KEY)) || null; }catch(e){ S = null; }
   if(!S) S = structuredClone(DEFAULT);
   S.settings = Object.assign(structuredClone(DEFAULT.settings), S.settings||{});
+  S.settings.kal = Object.assign(structuredClone(DEFAULT.settings.kal), S.settings.kal||{});
   S.days = S.days||{}; S.monate = S.monate||{};
 }
 function save(){
@@ -481,6 +483,15 @@ function renderEinst(){
     <button class="btn small" data-act="tpladd">+ Vorlage</button>
   </div>
   <div class="card">
+    <h2>Kalender (iPhone)</h2>
+    <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-kal="an" ${st.kal.an?'checked':''}> Schicht im Kalender löschen, wenn ein Tag frei wird</label>
+    <label class="f">Name des Kurzbefehls</label><input data-kal="name" value="${esc(st.kal.name)}">
+    <label class="f">Auslösen bei</label>
+    <div class="row">${['frei','abbau','urlaub','krank','sonder'].map(t=>`<button class="btn small ${st.kal.typen.includes(t)?'on':''}" data-kaltyp="${t}">${TYPEN[t].name}</button>`).join('')}</div>
+    <div class="hint">Beim Speichern startet die App den Kurzbefehl mit dem Datum (TT.MM.JJJJ). Der Kurzbefehl löscht den Termin, danach zurück in die App wechseln.</div>
+    <div class="row" style="margin-top:8px"><button class="btn small" data-act="kaltest">Kurzbefehl testen (heute)</button></div>
+  </div>
+  <div class="card">
     <h2>Daten</h2>
     <div class="row">
       <button class="btn" data-act="export">Backup exportieren</button>
@@ -492,6 +503,10 @@ function renderEinst(){
   </div>`;
 }
 
+function kalLoeschen(s){
+  const d=parse(s), t=`${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`;
+  location.href='shortcuts://run-shortcut?name='+encodeURIComponent(S.settings.kal.name)+'&input=text&text='+encodeURIComponent(t);
+}
 function setNav(x){ document.getElementById('navbar').innerHTML=x; }
 function setTitle(t,s){
   document.getElementById('title').textContent=t; document.getElementById('subtitle').textContent=s;
@@ -534,6 +549,7 @@ const onClick=ev=>{
       S.days[s]= feiertag(s) ? {typ:'feiertag'} : {typ:'arbeit',von:tp.von,bis:tp.bis,pause:tp.pause}; n++; }
     save(); render(); return toast(n?`${n} Tage ausgefüllt`:'Keine leeren Tage');
   }
+  if(t.dataset.kaltyp){ const a=S.settings.kal.typen, x=t.dataset.kaltyp; S.settings.kal.typen = a.includes(x)?a.filter(v=>v!==x):[...a,x]; save(); return render(); }
   if(t.dataset.tpldel!==undefined){ if(confirm('Vorlage löschen?')){ S.settings.schichten.splice(+t.dataset.tpldel,1); save(); render(); } return; }
   switch(t.dataset.act){
     case 'wprev': curMon=addDays(curMon,-7); break;
@@ -551,6 +567,7 @@ const onClick=ev=>{
     case 'export': download(`zeiterfassung-backup-${iso(new Date())}.json`,JSON.stringify({app:'zeiterfassung',version:APP_VERSION,...S},null,1),'application/json'); return;
     case 'import': document.getElementById('impFile').click(); return;
     case 'csv': exportCSV(); return;
+    case 'kaltest': if(!confirm('Kurzbefehl mit dem heutigen Datum starten? Dabei wird die heutige Schicht im Kalender gelöscht!')) return; kalLoeschen(iso(new Date())); return;
   }
   render();
 };
@@ -577,6 +594,7 @@ app.addEventListener('change',ev=>{
     else S.settings[k]=num(el.value);
     save(); render(); toast('Gespeichert'); return;
   }
+  if(el.dataset.kal){ const k=el.dataset.kal; S.settings.kal[k]= el.type==='checkbox'?el.checked:el.value.trim(); save(); if(el.type==='checkbox') render(); toast('Gespeichert'); return; }
   if(el.dataset.tplf){
     const [i,f]=el.dataset.tplf.split(':'); S.settings.schichten[+i][f]= f==='pause'?(parseInt(el.value)||0):el.value; save(); return;
   }
@@ -608,7 +626,11 @@ sheet.addEventListener('click',ev=>{
         if(edit.zuschlag) e.zuschlag=edit.zuschlag; }
       if(edit.std!=null && edit.typ!=='frei') e.std=edit.std;
       if(edit.notiz) e.notiz=edit.notiz;
-      S.days[s]=e; save(); closeSheet(); render(); return toast('Gespeichert');
+      const alt=S.days[s]?.typ;
+      S.days[s]=e; save(); closeSheet(); render(); toast('Gespeichert');
+      const k=S.settings.kal||{};
+      if(k.an && k.name && alt!==e.typ && (k.typen||[]).includes(e.typ)) setTimeout(()=>kalLoeschen(s),350);
+      return;
     }
   }
 });

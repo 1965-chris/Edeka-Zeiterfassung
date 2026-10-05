@@ -136,7 +136,7 @@ h2{font-size:15px;margin:4px 0 8px}
 
 <script>
 'use strict';
-const APP_VERSION = 'v1.10';
+const APP_VERSION = 'v1.11';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -493,7 +493,7 @@ function renderEinst(){
     <label class="f">Name des Kurzbefehls</label><input data-kal="name" value="${esc(st.kal.name)}">
     <label class="f">Auslösen bei</label>
     <div class="row">${['frei','abbau','urlaub','krank','sonder'].map(t=>`<button class="btn small ${st.kal.typen.includes(t)?'on':''}" data-kaltyp="${t}">${TYPEN[t].name}</button>`).join('')}</div>
-    <div class="hint">Beim Speichern startet die App den Kurzbefehl mit dem Datum (TT.MM.JJJJ 00:00, bei Zeiträumen ein Datum pro Zeile). Danach zurück in die App wechseln.</div>
+    <div class="hint">Beim Speichern startet die App den Kurzbefehl mit dem Datum (TT.MM.JJJJ, bei Zeiträumen ein Datum pro Zeile). Danach zurück in die App wechseln.</div>
     <label class="f" style="display:flex;gap:8px;align-items:center;margin-top:14px"><input type="checkbox" data-kal="urlaubAn" ${st.kal.urlaubAn?'checked':''}> Bei Urlaub: Schicht löschen <b>und</b> Urlaub eintragen</label>
     <label class="f">Name des Urlaubs-Kurzbefehls</label><input data-kal="urlaubName" value="${esc(st.kal.urlaubName)}">
     <div class="row" style="margin-top:8px"><button class="btn small" data-act="kaltest">Kurzbefehl testen (heute)</button></div>
@@ -510,7 +510,7 @@ function renderEinst(){
   </div>`;
 }
 
-const deDat = s => { const d=parse(s); return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()} 00:00`; };
+const deDat = s => { const d=parse(s); return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`; };
 function runShortcut(name, dates){
   location.href='shortcuts://run-shortcut?name='+encodeURIComponent(name)+'&input=text&text='+encodeURIComponent(dates.map(deDat).join('\n'));
 }

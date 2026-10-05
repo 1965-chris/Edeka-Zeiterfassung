@@ -16,14 +16,14 @@
 :root{
   --bg:#f3f5f4; --card:#ffffff; --text:#17201d; --muted:#6b7773; --line:#e2e7e5;
   --accent:#1f6f5c; --accent-soft:#dcefe8; --plus:#1f8a4c; --minus:#c0392b;
-  --urlaub:#2f7bd8; --feiertag:#8e44ad; --krank:#d35400; --frei:#8a9490; --sonder:#b8860b;
+  --urlaub:#2f7bd8; --feiertag:#8e44ad; --krank:#d35400; --frei:#8a9490; --sonder:#b8860b; --abbau:#16a085;
   --radius:14px;
 }
 @media (prefers-color-scheme: dark){
   :root{
     --bg:#0f1413; --card:#1a2220; --text:#e8eeec; --muted:#93a19c; --line:#2a3532;
     --accent:#4fbf9f; --accent-soft:#1d3a32; --plus:#4cd07d; --minus:#ff6b5b;
-    --urlaub:#5aa2ff; --feiertag:#c084fc; --krank:#ff9a4d; --frei:#7d8a86; --sonder:#e0b83a;
+    --urlaub:#5aa2ff; --feiertag:#c084fc; --krank:#ff9a4d; --frei:#7d8a86; --sonder:#e0b83a; --abbau:#3dd6b5;
   }
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -62,7 +62,7 @@ main{padding:0 16px 16px;max-width:640px;margin:0 auto}
 .day.sun{opacity:.75}
 .chip{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;color:#fff;background:var(--accent)}
 .chip.urlaub{background:var(--urlaub)} .chip.feiertag{background:var(--feiertag)} .chip.krank{background:var(--krank)}
-.chip.frei{background:var(--frei)} .chip.sonder{background:var(--sonder)}
+.chip.frei{background:var(--frei)} .chip.sonder{background:var(--sonder)} .chip.abbau{background:var(--abbau)}
 .chip.ghost{background:transparent;color:var(--muted);border:1px dashed var(--line)}
 .hol{font-size:11px;color:var(--feiertag)}
 .row{display:flex;gap:8px;flex-wrap:wrap}
@@ -136,7 +136,7 @@ h2{font-size:15px;margin:4px 0 8px}
 
 <script>
 'use strict';
-const APP_VERSION = 'v1.5';
+const APP_VERSION = 'v1.6';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -146,7 +146,8 @@ const TYPEN = {
   urlaub:   {name:'Urlaub',     gutschrift:true},
   feiertag: {name:'Feiertag',   gutschrift:true},
   krank:    {name:'Krank',      gutschrift:true},
-  sonder:   {name:'Sonderurl.', gutschrift:true}
+  sonder:   {name:'Sonderurl.', gutschrift:true},
+  abbau:    {name:'Ü-Abbau',    gutschrift:false}
 };
 
 /* ---------- Daten ---------- */
@@ -233,7 +234,7 @@ function konto(bisMontag){
   return saldo;
 }
 function monat(y,m){
-  const r={std:0,arbeit:0,urlaub:0,krank:0,feiertag:0,frei:0,sonder:0,zuschlag:0};
+  const r={std:0,arbeit:0,urlaub:0,krank:0,feiertag:0,frei:0,sonder:0,abbau:0,zuschlag:0};
   const p=`${y}-${pad(m+1)}-`;
   for(const [k,e] of Object.entries(S.days)){
     if(!k.startsWith(p)) continue;
@@ -322,6 +323,8 @@ function drawSheet(){
   } else if(TYPEN[edit.typ].gutschrift){
     body=`<label class="f">Stunden manuell</label><input inputmode="decimal" id="eStd" value="${edit.std!=null?fmt(edit.std):''}" placeholder="Standard ${fmt(S.settings.sollTag)}">
     <div class="calc" id="eCalc">Gutschrift ${fmt(stunden(edit))} Std.</div>`;
+  } else if(edit.typ==='abbau'){
+    body=`<div class="calc">0,00 Std. · fehlt am Wochensoll<br><span style="font-weight:600">Überstundenkonto wird entsprechend belastet</span></div>`;
   } else {
     body=`<div class="calc">0,00 Std.</div>`;
   }
@@ -386,7 +389,7 @@ function renderMonat(){
       <tr><td>${esc(g.sonderText||'Sonderzahlung')}</td><td>${sb?eur(sb):'–'}</td><td>${sn?eur(sn):'–'}</td></tr></tbody>
       <tfoot><tr><td>Gesamt</td><td>${eur(br+sb)}</td><td>${eur(ne+sn)}</td></tr></tfoot></table>
       <div class="hint">Std.-Lohn ohne Sonderzahlung, damit die Monate vergleichbar bleiben.</div>`:''}
-    <div class="muted" style="margin-top:8px">Feiertage: ${r.feiertag} · Freie Tage: ${r.frei}${r.zuschlag?` · Zuschlagsstunden: ${fmt(r.zuschlag)}`:''}</div>
+    <div class="muted" style="margin-top:8px">Feiertage: ${r.feiertag} · Freie Tage: ${r.frei}${r.abbau?` · Überstunden-Abbau: ${r.abbau} Tag(e)`:''}${r.zuschlag?` · Zuschlagsstunden: ${fmt(r.zuschlag)}`:''}</div>
     <div class="row" style="margin-top:8px"><button class="btn small" data-act="copyprev">Lohn vom Vormonat übernehmen</button></div>
   </div>
   <div class="card"><h2>Einträge</h2>${list?`<table><tbody>${list}</tbody></table>`:'<div class="muted">Noch keine Einträge.</div>'}</div>`;
@@ -398,7 +401,7 @@ function renderJahr(){
   let rows='', T={std:0,br:0,ne:0,sb:0,sn:0,urlaub:0,krank:0};
   for(let m=0;m<12;m++){
     const r=monat(y,m), g=S.monate[`${y}-${pad(m+1)}`]||{}, br=num(g.brutto), ne=num(g.netto);
-    T.std+=r.std; T.br+=br; T.ne+=ne; T.sb+=num(g.sonderBrutto); T.sn+=num(g.sonder); T.urlaub+=r.urlaub; T.krank+=r.krank;
+    T.std+=r.std; T.br+=br; T.ne+=ne; T.sb+=num(g.sonderBrutto); T.sn+=num(g.sonder); T.urlaub+=r.urlaub; T.krank+=r.krank; T.abbau=(T.abbau||0)+r.abbau;
     if(!r.std && !br) { rows+=`<tr class="muted"><td>${MON[m].slice(0,3)}</td><td>–</td><td>–</td><td>–</td><td>–</td></tr>`; continue; }
     rows+=`<tr data-month="${m}"><td>${MON[m].slice(0,3)}</td><td>${fmt(r.std)}</td><td>${br&&r.std?eur(br/r.std):'–'}</td><td>${ne&&r.std?eur(ne/r.std):'–'}</td><td>${r.urlaub||''}</td></tr>`;
   }
@@ -428,6 +431,7 @@ function renderJahr(){
     <div><label class="f">Anspruch ${y} (Tage)</label><input inputmode="numeric" data-ujahr="${y}" value="${eigen?S.urlaubJahr[y]:''}" placeholder="${ansStd||'–'} (Standard)"></div>
     <div class="calc" style="margin:0">Resturlaub<br>${ans?`${ans-T.urlaub} Tage`:'–'}</div>
   </div>
+  ${T.abbau?`<div class="muted" style="margin-top:8px">Überstunden-Abbau ${y}: <b>${T.abbau} Tag(e)</b></div>`:''}
   <div class="muted" style="margin-top:4px">Konto = Stand bis Ende letzter Woche.</div></div>`;
 }
 

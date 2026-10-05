@@ -136,7 +136,7 @@ h2{font-size:15px;margin:4px 0 8px}
 
 <script>
 'use strict';
-const APP_VERSION = 'v1.6';
+const APP_VERSION = 'v1.7';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -408,14 +408,19 @@ function renderJahr(){
   S.urlaubJahr=S.urlaubJahr||{};
   const ansStd=num(S.settings.urlaubAnspruch), eigen=S.urlaubJahr[y]!=null && S.urlaubJahr[y]!=='';
   const ans= eigen ? num(S.urlaubJahr[y]) : ansStd;
-  const saldo=konto(addDays(monday(new Date()),0));
+  const nowY=new Date().getFullYear();
+  const endeMo=addDays(monday(new Date(y,11,31)),7), startMo=addDays(monday(new Date(y-1,11,31)),7);
+  const saldoEnde=konto(endeMo), saldoStart=konto(startMo), aktuell=konto(monday(new Date()));
+  const saldo = y===nowY ? aktuell : saldoEnde;
+  const kLabel = y<nowY ? 'Konto 31.12.' : y===nowY ? 'Konto aktuell' : 'Prognose';
+  const jahrDiff = (y===nowY ? aktuell : saldoEnde) - saldoStart;
   setNav(`<div class="card nav"><button class="iconbtn" data-act="yprev">‹</button><b>${y}</b><button class="iconbtn" data-act="ynext">›</button></div>`);
   app.innerHTML=`
   <div class="stats">
     <div class="stat"><div class="v">${fmt(T.std)}</div><div class="l">Std.</div></div>
     <div class="stat"><div class="v">${T.urlaub}${ans?`/${ans}`:''}</div><div class="l">Urlaub</div></div>
     <div class="stat"><div class="v">${T.krank}</div><div class="l">Krank</div></div>
-    <div class="stat"><div class="v ${saldo>=0?'pos':'neg'}">${fmtS(saldo)}</div><div class="l">Konto</div></div>
+    <div class="stat"><div class="v ${saldo>=0?'pos':'neg'}">${fmtS(saldo)}</div><div class="l">${kLabel}</div></div>
   </div>
   <div class="card"><table>
     <thead><tr><th>Monat</th><th>Std.</th><th>Br./h</th><th>Ne./h</th><th>Url.</th></tr></thead>
@@ -432,7 +437,14 @@ function renderJahr(){
     <div class="calc" style="margin:0">Resturlaub<br>${ans?`${ans-T.urlaub} Tage`:'–'}</div>
   </div>
   ${T.abbau?`<div class="muted" style="margin-top:8px">Überstunden-Abbau ${y}: <b>${T.abbau} Tag(e)</b></div>`:''}
-  <div class="muted" style="margin-top:4px">Konto = Stand bis Ende letzter Woche.</div></div>`;
+  <h2 style="margin-top:16px">Überstundenkonto ${y}</h2>
+  <table><tbody>
+    <tr><td>Stand Jahresbeginn</td><td>${fmtS(saldoStart)}</td></tr>
+    <tr><td>${y===nowY?'Veränderung bisher':'Veränderung im Jahr'}</td><td class="${jahrDiff>=0?'pos':'neg'}">${fmtS(jahrDiff)}</td></tr>
+    ${y===nowY?`<tr><td>Stand aktuell</td><td>${fmtS(aktuell)}</td></tr>`:''}
+    <tr><td>${y>=nowY?'Prognose 31.12. (geplante Schichten)':'Stand 31.12.'}</td><td>${fmtS(saldoEnde)}</td></tr>
+  </tbody></table>
+  <div class="hint">Eine Woche über den Jahreswechsel zählt zu dem Jahr, in dem sie beginnt.</div></div>`;
 }
 
 /* ---------- Einstellungen ---------- */

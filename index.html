@@ -29,8 +29,8 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;background:var(--bg);color:var(--text);
   font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif}
-body{padding:env(safe-area-inset-top) 0 calc(72px + env(safe-area-inset-bottom))}
-header{position:sticky;top:0;z-index:5;background:var(--bg);padding:12px 16px 8px}
+body{padding:0 0 calc(72px + env(safe-area-inset-bottom))}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(env(safe-area-inset-top) + 12px) 16px 8px}
 header h1{margin:0;font-size:22px;letter-spacing:-.3px}
 header .sub{color:var(--muted);font-size:13px}
 main{padding:0 16px 16px;max-width:640px;margin:0 auto}
@@ -129,7 +129,7 @@ h2{font-size:15px;margin:4px 0 8px}
 
 <script>
 'use strict';
-const APP_VERSION = 'v1.3';
+const APP_VERSION = 'v1.4';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -340,7 +340,7 @@ function readSheet(){
 function renderMonat(){
   const y=curMonth.getFullYear(), m=curMonth.getMonth(), r=monat(y,m), key=`${y}-${pad(m+1)}`, g=S.monate[key]||{};
   setTitle('Monat', `${MON[m]} ${y}`);
-  const br=num(g.brutto), ne=num(g.netto);
+  const br=num(g.brutto), ne=num(g.netto), sb=num(g.sonderBrutto), sn=num(g.sonder);
   let list='';
   const last=new Date(y,m+1,0).getDate();
   for(let i=1;i<=last;i++){
@@ -363,14 +363,22 @@ function renderMonat(){
     <div class="grid2">
       <div><label class="f">Brutto (€)</label><input inputmode="decimal" data-money="brutto" value="${g.brutto??''}" placeholder="0,00"></div>
       <div><label class="f">Netto (€)</label><input inputmode="decimal" data-money="netto" value="${g.netto??''}" placeholder="0,00"></div>
-      <div><label class="f">Sonderzahlung netto (€)</label><input inputmode="decimal" data-money="sonder" value="${g.sonder??''}" placeholder="0,00"></div>
-      <div><label class="f">Art</label><input data-money="sonderText" value="${esc(g.sonderText??'')}" placeholder="z. B. Urlaubsgeld"></div>
+    </div>
+    <h2 style="margin-top:14px">Sonderzahlung</h2>
+    <label class="f">Art</label><input data-money="sonderText" value="${esc(g.sonderText??'')}" placeholder="z. B. Urlaubsgeld, Weihnachtsgeld">
+    <div class="grid2">
+      <div><label class="f">Brutto (€)</label><input inputmode="decimal" data-money="sonderBrutto" value="${g.sonderBrutto??''}" placeholder="0,00"></div>
+      <div><label class="f">Netto (€)</label><input inputmode="decimal" data-money="sonder" value="${g.sonder??''}" placeholder="0,00"></div>
     </div>
     <div class="grid2" style="margin-top:10px">
       <div class="calc">Brutto/Std<br>${br&&r.std?eur(br/r.std):'–'}</div>
       <div class="calc">Netto/Std<br>${ne&&r.std?eur(ne/r.std):'–'}</div>
     </div>
-    ${num(g.sonder)?`<div class="muted" style="margin-top:8px">+ ${esc(g.sonderText||'Sonderzahlung')}: <b>${eur(num(g.sonder))}</b> · ausgezahlt gesamt ${eur(ne+num(g.sonder))}</div>`:''}
+    ${sb||sn?`<table style="margin-top:10px"><thead><tr><th></th><th>Brutto</th><th>Netto</th></tr></thead><tbody>
+      <tr><td>Lohn</td><td>${eur(br)}</td><td>${eur(ne)}</td></tr>
+      <tr><td>${esc(g.sonderText||'Sonderzahlung')}</td><td>${sb?eur(sb):'–'}</td><td>${sn?eur(sn):'–'}</td></tr></tbody>
+      <tfoot><tr><td>Gesamt</td><td>${eur(br+sb)}</td><td>${eur(ne+sn)}</td></tr></tfoot></table>
+      <div class="hint">Std.-Lohn ohne Sonderzahlung, damit die Monate vergleichbar bleiben.</div>`:''}
     <div class="muted" style="margin-top:8px">Feiertage: ${r.feiertag} · Freie Tage: ${r.frei}${r.zuschlag?` · Zuschlagsstunden: ${fmt(r.zuschlag)}`:''}</div>
     <div class="row" style="margin-top:8px"><button class="btn small" data-act="copyprev">Lohn vom Vormonat übernehmen</button></div>
   </div>
@@ -380,10 +388,10 @@ function renderMonat(){
 /* ---------- Jahr ---------- */
 function renderJahr(){
   const y=curYear; setTitle('Jahr', String(y));
-  let rows='', T={std:0,br:0,ne:0,urlaub:0,krank:0};
+  let rows='', T={std:0,br:0,ne:0,sb:0,sn:0,urlaub:0,krank:0};
   for(let m=0;m<12;m++){
     const r=monat(y,m), g=S.monate[`${y}-${pad(m+1)}`]||{}, br=num(g.brutto), ne=num(g.netto);
-    T.std+=r.std; T.br+=br; T.ne+=ne; T.urlaub+=r.urlaub; T.krank+=r.krank;
+    T.std+=r.std; T.br+=br; T.ne+=ne; T.sb+=num(g.sonderBrutto); T.sn+=num(g.sonder); T.urlaub+=r.urlaub; T.krank+=r.krank;
     if(!r.std && !br) { rows+=`<tr class="muted"><td>${MON[m].slice(0,3)}</td><td>–</td><td>–</td><td>–</td><td>–</td></tr>`; continue; }
     rows+=`<tr data-month="${m}"><td>${MON[m].slice(0,3)}</td><td>${fmt(r.std)}</td><td>${br&&r.std?eur(br/r.std):'–'}</td><td>${ne&&r.std?eur(ne/r.std):'–'}</td><td>${r.urlaub||''}</td></tr>`;
   }
@@ -404,6 +412,11 @@ function renderJahr(){
     <tbody>${rows}</tbody>
     <tfoot><tr><td>Σ</td><td>${fmt(T.std)}</td><td>${T.br&&T.std?eur(T.br/T.std):'–'}</td><td>${T.ne&&T.std?eur(T.ne/T.std):'–'}</td><td>${T.urlaub}</td></tr></tfoot>
   </table>
+  ${T.br||T.ne?`<h2 style="margin-top:16px">Einkommen ${y}</h2>
+  <table><thead><tr><th></th><th>Brutto</th><th>Netto</th></tr></thead><tbody>
+    <tr><td>Lohn</td><td>${eur(T.br)}</td><td>${eur(T.ne)}</td></tr>
+    <tr><td>Sonderzahlungen</td><td>${T.sb?eur(T.sb):'–'}</td><td>${T.sn?eur(T.sn):'–'}</td></tr></tbody>
+    <tfoot><tr><td>Gesamt</td><td>${eur(T.br+T.sb)}</td><td>${eur(T.ne+T.sn)}</td></tr></tfoot></table>`:''}
   <div class="grid2" style="margin-top:12px">
     <div><label class="f">Anspruch ${y} (Tage)</label><input inputmode="numeric" data-ujahr="${y}" value="${eigen?S.urlaubJahr[y]:''}" placeholder="${ansStd||'–'} (Standard)"></div>
     <div class="calc" style="margin:0">Resturlaub<br>${ans?`${ans-T.urlaub} Tage`:'–'}</div>

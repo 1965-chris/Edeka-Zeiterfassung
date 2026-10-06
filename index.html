@@ -135,19 +135,34 @@ h2{font-size:15px;margin:4px 0 8px}
 .kalbar{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 10px;border-radius:12px;background:#fff3e0;color:#8a4b00;font-size:14px;font-weight:600}
 @media (prefers-color-scheme: dark){ .kalbar{background:#3a2a12;color:#ffc77a} }
 .kalbar span{flex:1}
+.iconbtn.on{background:var(--accent);color:#fff}
+.dash{cursor:pointer}
+.dash h2{display:flex;justify-content:space-between;align-items:center}
+.dash h2 span{color:var(--muted);font-weight:400;font-size:18px}
+.nx{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
+.nx:last-child{border-bottom:0}
+.nx b{min-width:72px}
+.today-big{font-size:22px;font-weight:800;margin:2px 0}
+.big{font-size:40px;font-weight:800;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1.1}
+.bar{height:10px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:10px}
+.bar>div{height:100%;background:var(--accent);border-radius:99px}
+table.calc2 td{padding:7px 4px}
+table.calc2 tr.sum td{font-weight:700;border-top:2px solid var(--line)}
+.stats3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .kalbar button{border:0;border-radius:10px;padding:7px 12px;font-weight:700;background:#e67e22;color:#fff;font-size:14px}
 .kalbar button.x{background:transparent;color:inherit;padding:7px 6px}
 </style>
 </head>
 <body>
-<header class="hdr"><div class="top"><div><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></div><button class="todaybtn" id="todayBtn" hidden>Heute</button></div><div id="navbar"></div><div id="kalbar"></div></header>
+<header class="hdr"><div class="top"><div><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></div><div style="display:flex;gap:8px;align-items:center"><button class="todaybtn" id="todayBtn" hidden>Heute</button><button class="iconbtn" id="setBtn" aria-label="Einstellungen">⚙️</button></div></div><div id="navbar"></div><div id="kalbar"></div></header>
 <main id="app"></main>
 
 <nav class="tabbar">
+  <button data-tab="start"><span class="i">🏠</span>Start</button>
   <button data-tab="woche"><span class="i">🗓️</span>Woche</button>
   <button data-tab="monat"><span class="i">📊</span>Monat</button>
   <button data-tab="jahr"><span class="i">📈</span>Jahr</button>
-  <button data-tab="einst"><span class="i">⚙️</span>Einstellungen</button>
+  <button data-tab="rente"><span class="i">🏖️</span>Rente</button>
 </nav>
 
 <div class="sheet-bg" id="sheetBg"></div>
@@ -156,7 +171,7 @@ h2{font-size:15px;margin:4px 0 8px}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.2';
+const APP_VERSION = 'v2.4';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -178,6 +193,8 @@ const DEFAULT = {
          typen:['arbeit','frei','abbau','urlaub','krank','feiertag'],
          ort:'EDEKA Möller, Elsa-Neumann-Straße 6, 40789 Monheim am Rhein',
          regelWort:'Baumberg', regelOrt:'EDEKA Möller, Geschwister-Scholl-Straße 69'},
+    rente:{regel:'', beginn:'', frei:'', versBeginn:'', infoStand:'', infoEP:'', infoPrognose:'', infoRW:'', epExtra:'',
+           rentenwert:42.52, de:{2024:47085, 2025:50493, 2026:51944}, kvZusatz:2.9, pv:3.6, anpassung:2},
     schichten:[
       {name:'Früh',  von:'05:45', bis:'13:45', pause:30},
       {name:'Spät',  von:'13:15', bis:'21:15', pause:30},
@@ -194,6 +211,7 @@ function load(){
   S.settings = Object.assign(structuredClone(DEFAULT.settings), S.settings||{});
   S.settings.kal = Object.assign(structuredClone(DEFAULT.settings.kal), altKal);
   { const k=S.settings.kal; if(k.ort==='EDEKA Möller, Geschwister-Scholl-Straße 69' && k.regelOrt==='EDEKA Möller, Elsa-Neumann-Straße 6, 40789 Monheim am Rhein'){ k.ort=DEFAULT.settings.kal.ort; k.regelOrt=DEFAULT.settings.kal.regelOrt; } }
+  { const alt=(S.settings.rente)||{}; S.settings.rente=Object.assign(structuredClone(DEFAULT.settings.rente), alt); S.settings.rente.de=Object.assign({}, DEFAULT.settings.rente.de, alt.de||{}); }
   if(!altKal.v){ const k=S.settings.kal; k.v=2; k.typen=[...DEFAULT.settings.kal.typen]; delete k.urlaubAn; delete k.urlaubName; }
   S.days = S.days||{}; S.monate = S.monate||{}; S.kalQ = S.kalQ||[];
 }
@@ -285,14 +303,15 @@ function monat(y,m){
 }
 
 /* ---------- UI-Zustand ---------- */
-let tab='woche', curMon=monday(new Date()), curMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1), curYear=new Date().getFullYear();
+let tab='start', curMon=monday(new Date()), curMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1), curYear=new Date().getFullYear();
 const app=document.getElementById('app');
 function toast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),1800);}
 
 function render(){
   document.querySelectorAll('.tabbar button').forEach(b=>b.classList.toggle('act',b.dataset.tab===tab));
   renderKalBar();
-  ({woche:renderWoche,monat:renderMonat,jahr:renderJahr,einst:renderEinst})[tab]();
+  ({start:renderStart,woche:renderWoche,monat:renderMonat,jahr:renderJahr,rente:renderRente,einst:renderEinst})[tab]();
+  document.getElementById('setBtn').classList.toggle('on',tab==='einst');
 }
 
 /* ---------- Woche ---------- */
@@ -507,6 +526,180 @@ function renderJahr(){
   <div class="hint">Eine Woche über den Jahreswechsel zählt zu dem Jahr, in dem sie beginnt.</div></div>`;
 }
 
+/* ---------- Rente ---------- */
+const mk = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}`;
+const de2 = s => s ? `${s.slice(8,10)}.${s.slice(5,7)}.${s.slice(0,4)}` : '–';
+function ymd(a,b){ // Jahre/Monate/Tage von a bis b
+  let y=b.getFullYear()-a.getFullYear(), m=b.getMonth()-a.getMonth(), d=b.getDate()-a.getDate();
+  if(d<0){ m--; d+=new Date(b.getFullYear(),b.getMonth(),0).getDate(); }
+  if(m<0){ y--; m+=12; }
+  return {y,m,d};
+}
+function renteCalc(beginnIso){
+  const r=S.settings.rente, now=new Date(), cur=mk(now);
+  const ys=Object.keys(r.de).map(Number).sort((a,b)=>a-b);
+  const deY=y=>num(r.de[y]) || num(r.de[ys[ys.length-1]]);
+  // seit Renteninformation: echte Lohndaten (abgeschlossene Monate)
+  let epSeit=0, mitDaten=0, ohne=[];
+  if(r.infoStand){
+    const st=parse(r.infoStand);
+    for(let d=new Date(st.getFullYear(),st.getMonth()+1,1); mk(d)<cur; d=new Date(d.getFullYear(),d.getMonth()+1,1)){
+      const g=S.monate[mk(d)]||{}, b=num(g.brutto)+num(g.sonderBrutto);
+      if(num(g.brutto)>0){ epSeit+=b/deY(d.getFullYear()); mitDaten++; } else ohne.push(MON[d.getMonth()].slice(0,3)+' '+String(d.getFullYear()).slice(2));
+    }
+  }
+  // EP pro Jahr aus den letzten 12 Monaten mit Lohn
+  let sum=0,n=0;
+  for(let i=1;i<=24&&n<12;i++){ const d=new Date(now.getFullYear(),now.getMonth()-i,1), g=S.monate[mk(d)]||{}; if(num(g.brutto)>0){ sum+=num(g.brutto)+num(g.sonderBrutto); n++; } }
+  const epJahr = n ? (sum/n*12)/deY(now.getFullYear()) : 0;
+  const beginn = beginnIso ? parse(beginnIso) : null;
+  const monRest = beginn ? Math.max(0,(beginn.getFullYear()-now.getFullYear())*12 + beginn.getMonth()-now.getMonth()) : 0;
+  const epZuk = epJahr*monRest/12;
+  const epInfo=num(r.infoEP), epExtra=num(r.epExtra);
+  const epGes = epInfo+epSeit+epExtra+epZuk;
+  // Abschlag / Zuschlag
+  let faktor=1, ab='';
+  if(beginn && r.regel){
+    const regel=parse(r.regel), frei=r.frei?parse(r.frei):null;
+    const diff=(regel.getFullYear()-beginn.getFullYear())*12 + regel.getMonth()-beginn.getMonth();
+    if(diff>0 && frei && beginn>=frei) ab='abschlagsfrei';
+    else if(diff>0){ const p=Math.min(diff*0.3,14.4); faktor=1-p/100; ab=`−${fmt(p)} % Abschlag (${diff} Mon. früher)`; }
+    else if(diff<0){ const p=-diff*0.5; faktor=1+p/100; ab=`+${fmt(p)} % Zuschlag (${-diff} Mon. später)`; }
+  }
+  const rw=num(r.rentenwert), brutto=epGes*rw*faktor;
+  const anp=Math.pow(1+num(r.anpassung)/100, monRest/12);
+  const abzug=(7.3+num(r.kvZusatz)/2+num(r.pv))/100;
+  return {epInfo,epSeit,mitDaten,ohne,epExtra,epJahr,monRest,epZuk,epGes,faktor,ab,rw,brutto,netto:brutto*(1-abzug),abzug,bruttoAnp:brutto*anp,nettoAnp:brutto*anp*(1-abzug)};
+}
+function countdownCard(klein){
+  const r=S.settings.rente, now=new Date(), heute=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  if(!r.beginn) return klein?`<div class="card dash" data-go="rente"><h2>🏖️ Rente <span>›</span></h2><div class="muted">Daten aus der Renteninformation eintragen</div></div>`:'';
+  const b=parse(r.beginn), tage=Math.round((b-heute)/864e5);
+  if(tage<=0) return `<div class="card ${klein?'dash':''}" ${klein?'data-go="rente"':''} style="text-align:center"><div class="big">🎉 In Rente!</div></div>`;
+  const x=ymd(heute,b);
+  let arb=0; for(const [k,e] of Object.entries(S.days)){ const d=parse(k); if(e.typ==='arbeit' && d<=heute && (heute-d)/864e5<365) arb++; }
+  const quote = arb>50 ? arb/365 : 5/7*0.88;
+  const vb=r.versBeginn?parse(r.versBeginn):null, prozent = vb ? Math.min(100,(heute-vb)/(b-vb)*100) : null;
+  const c = klein && num(r.infoEP) ? renteCalc(r.beginn) : null;
+  return `<div class="card ${klein?'dash':''}" ${klein?'data-go="rente"':''} style="text-align:center">
+    ${klein?`<h2>🏖️ Rente am ${de2(r.beginn)} <span>›</span></h2>`:'<div class="muted">Noch bis zur Rente</div>'}
+    <div class="big">${tage.toLocaleString('de-DE')} Tage</div>
+    <div style="font-weight:600;margin-top:4px">${x.y} Jahre · ${x.m} Monate · ${x.d} Tage</div>
+    <div class="muted" style="margin-top:4px">≈ ${Math.round(tage*quote).toLocaleString('de-DE')} Arbeitstage · ${Math.floor(tage/7).toLocaleString('de-DE')} Wochen</div>
+    ${prozent!=null?`<div class="bar"><div style="width:${prozent.toFixed(1)}%"></div></div><div class="hint">${fmt(prozent)} % des Arbeitslebens geschafft 💪</div>`:''}
+    ${c?`<div class="hint">Rente ca. <b>${eur(c.netto)}</b> netto (heutiger Wert)</div>`:''}
+  </div>`;
+}
+function eintragText(e){
+  if(!e) return '<span class="muted">kein Eintrag</span>';
+  if(e.typ==='arbeit') return `${esc(kurz(e))}${e.von?` <span class="muted">${e.von}–${e.bis}</span>`:''}`;
+  return `<span class="chip ${e.typ}">${TYPEN[e.typ].name}</span>`;
+}
+function renderStart(){
+  const now=new Date(), heute=new Date(now.getFullYear(),now.getMonth(),now.getDate()), hs=iso(heute);
+  const WTL=['Sonntag','Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag'];
+  setNav(''); setTitle('Übersicht', `${WTL[heute.getDay()]}, ${de2(hs)}`);
+  const e=S.days[hs], ft=feiertag(hs);
+  // nächste Einträge
+  let nx=''; let n=0;
+  for(let i=1;i<=21&&n<5;i++){ const d=addDays(heute,i), s=iso(d), x=S.days[s]; if(!x) continue; n++;
+    nx+=`<div class="nx" data-edit="${s}"><b>${i===1?'Morgen':WT[d.getDay()]+' '+ddmm(d)}</b><span style="flex:1;text-align:right">${eintragText(x)}${x.notiz?` <span class="muted">· ${esc(x.notiz)}</span>`:''}</span></div>`; }
+  // Kennzahlen
+  const mo=monday(heute), w=woche(mo), kt=konto(mo);
+  const y=heute.getFullYear(); S.urlaubJahr=S.urlaubJahr||{};
+  const ans = S.urlaubJahr[y]!=null && S.urlaubJahr[y]!=='' ? num(S.urlaubJahr[y]) : num(S.settings.urlaubAnspruch);
+  let urlaub=0; for(const [k,x] of Object.entries(S.days)) if(k.startsWith(y+'-') && x.typ==='urlaub') urlaub++;
+  const m=heute.getMonth(), mr=monat(y,m), g=S.monate[`${y}-${pad(m+1)}`]||{};
+  let bisher=0; for(let i=1;i<=heute.getDate();i++) bisher+=stunden(S.days[`${y}-${pad(m+1)}-${pad(i)}`]);
+  app.innerHTML=`
+  <div class="card" data-edit="${hs}" style="cursor:pointer">
+    <div class="muted">Heute${ft?' · 🎉 '+ft:''}</div>
+    <div class="today-big">${eintragText(e)}</div>
+    ${e?.notiz?`<div class="muted">${esc(e.notiz)}</div>`:''}
+  </div>
+  <div class="stats">
+    <div class="stat dash" data-go="woche"><div class="v ${w.diff>=0?'pos':'neg'}">${fmtS(w.diff)}</div><div class="l">Woche</div></div>
+    <div class="stat dash" data-go="jahr"><div class="v ${kt>=0?'pos':'neg'}">${fmtS(kt)}</div><div class="l">Ü-Konto</div></div>
+    <div class="stat dash" data-go="jahr"><div class="v">${ans?ans-urlaub:urlaub}</div><div class="l">${ans?'Resturlaub':'Urlaub'}</div></div>
+    <div class="stat dash" data-go="monat"><div class="v">${fmt(bisher)}</div><div class="l">Std. ${MON[m].slice(0,3)}</div></div>
+  </div>
+  <div class="card dash" data-go="woche">
+    <h2>Als Nächstes <span>›</span></h2>
+    ${nx||'<div class="muted">Keine Einträge in den nächsten 3 Wochen.</div>'}
+  </div>
+  ${countdownCard(true)}
+  <div class="card dash" data-go="monat">
+    <h2>${MON[m]} <span>›</span></h2>
+    <div class="grid2">
+      <div><div class="muted">Stunden geplant</div><b>${fmt(mr.std)}</b></div>
+      <div><div class="muted">Netto/Std</div><b>${num(g.netto)&&mr.std?eur(num(g.netto)/mr.std):'–'}</b></div>
+    </div>
+  </div>`;
+}
+function renderRente(){
+  const r=S.settings.rente, now=new Date(), heute=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  setNav(''); setTitle('Rente', r.beginn?`Beginn ${de2(r.beginn)}`:'Daten unten eintragen');
+  const count=countdownCard(false);
+  const c=renteCalc(r.beginn);
+  let rechner='';
+  if(c.epInfo && r.beginn){
+    let vgl='';
+    const opts=[]; if(r.frei) opts.push([r.frei,'mit 45 Jahren']); if(r.regel) opts.push([r.regel,'Regelalter']);
+    if(opts.length>1) vgl=`<h2 style="margin-top:16px">Vergleich Rentenbeginn</h2><table><thead><tr><th>Beginn</th><th>EP</th><th>Brutto</th><th>Netto</th></tr></thead><tbody>${
+      opts.map(([d,l])=>{const v=renteCalc(d); return `<tr><td>${de2(d)}<div class="muted" style="font-size:11px">${l}${v.ab?' · '+v.ab:''}</div></td><td>${fmt(v.epGes)}</td><td>${eur(v.brutto)}</td><td>${eur(v.netto)}</td></tr>`;}).join('')}</tbody></table>`;
+    const drv = num(r.infoPrognose)&&num(r.infoRW) ? num(r.infoPrognose)/num(r.infoRW) : 0;
+    rechner=`
+    <div class="stats3">
+      <div class="stat"><div class="v">${fmt(c.epGes)}</div><div class="l">Punkte</div></div>
+      <div class="stat"><div class="v">${eur(c.brutto).replace(/,\d\d/,'')}</div><div class="l">Brutto</div></div>
+      <div class="stat"><div class="v pos">${eur(c.netto).replace(/,\d\d/,'')}</div><div class="l">Netto ca.</div></div>
+    </div>
+    <div class="card">
+      <h2>So rechnet die App</h2>
+      <table class="calc2"><tbody>
+        <tr><td>Renteninfo (Stand ${de2(r.infoStand)})</td><td>${fmt(c.epInfo)}</td></tr>
+        <tr><td>seitdem aus deinem Lohn<div class="muted" style="font-size:11px">${c.mitDaten} Monate${c.ohne.length?` · ohne Lohn: ${c.ohne.length>4?c.ohne.length+' Monate':c.ohne.join(', ')}`:''}</div></td><td>${fmt(c.epSeit)}</td></tr>
+        ${c.epExtra?`<tr><td>zusätzlich (manuell)</td><td>${fmt(c.epExtra)}</td></tr>`:''}
+        <tr><td>bis Rentenbeginn<div class="muted" style="font-size:11px">${fmt(c.epJahr)} Punkte/Jahr × ${fmt(c.monRest/12)} Jahre</div></td><td>${fmt(c.epZuk)}</td></tr>
+        <tr class="sum"><td>Entgeltpunkte gesamt</td><td>${fmt(c.epGes)}</td></tr>
+        <tr><td>× Rentenwert</td><td>${eur(c.rw)}</td></tr>
+        ${c.ab?`<tr><td>${c.ab}</td><td>× ${fmt(c.faktor)}</td></tr>`:''}
+        <tr class="sum"><td>Bruttorente (heutiger Wert)</td><td>${eur(c.brutto)}</td></tr>
+        <tr><td>− Kranken-/Pflegeversicherung (${fmt(c.abzug*100)} %)</td><td>${eur(c.netto-c.brutto)}</td></tr>
+        <tr class="sum"><td>Netto ca. (vor Steuern)</td><td>${eur(c.netto)}</td></tr>
+      </tbody></table>
+      <div class="hint" style="margin-top:10px">Mit ${fmt(num(r.anpassung))} % Rentenerhöhung pro Jahr bis Rentenbeginn: <b>${eur(c.bruttoAnp)}</b> brutto · <b>${eur(c.nettoAnp)}</b> netto.</div>
+      ${drv?`<div class="hint">Zum Vergleich: Hochrechnung der Rentenversicherung (${de2(r.infoStand)}) = ${fmt(drv)} Punkte = ${eur(drv*c.rw)} nach heutigem Rentenwert.</div>`:''}
+      ${vgl}
+      <div class="hint" style="margin-top:10px">Grobe Schätzung ohne Gewähr – maßgeblich ist der Bescheid der Rentenversicherung. Steuern sind nicht berücksichtigt.</div>
+    </div>`;
+  } else rechner=`<div class="card"><div class="muted">Trag unten die Werte aus deiner Renteninformation ein, dann rechnet die App deine Rente aus.</div></div>`;
+  const f=(k,l,t='text',hint='')=>`<label class="f">${l}</label><input ${t==='date'?'type="date"':'inputmode="decimal"'} data-rente="${k}" value="${t==='date'?(r[k]||''):(r[k]===''||r[k]==null?'':String(r[k]).replace('.',','))}">${hint?`<div class="hint">${hint}</div>`:''}`;
+  const jahre=[]; for(let y=2024;y<=now.getFullYear()+1;y++) jahre.push(y);
+  app.innerHTML = count + rechner
+  + sec('r_info','Daten aus der Renteninformation',`
+      ${f('infoStand','Stand der Daten (bis)','date')}
+      ${f('infoEP','Entgeltpunkte bisher')}
+      ${f('infoPrognose','Hochgerechnete Rente laut DRV (€)')}
+      ${f('infoRW','Rentenwert damals (€)','text','Steht auf der Rückseite unter „Grundlagen“.')}
+      ${f('epExtra','Zusätzliche Entgeltpunkte (manuell)','text','Für Monate ohne Lohndaten in der App.')}`)
+  + sec('r_daten','Rentenbeginn',`
+      ${f('regel','Regelaltersrente ab','date')}
+      ${f('beginn','Geplanter Rentenbeginn','date','Früher = 0,3 % Abschlag pro Monat, später = 0,5 % Zuschlag.')}
+      ${f('frei','Abschlagsfrei ab (bei 45 Beitragsjahren)','date','Leer lassen, wenn nicht zutreffend. Bitte bei der Rentenversicherung prüfen lassen.')}
+      ${f('versBeginn','Beginn Versicherung (für den Fortschrittsbalken)','date')}`)
+  + sec('r_werte','Rechengrößen',`
+      ${f('rentenwert','Aktueller Rentenwert (€)','text','Ab 01.07.2026: 42,52 €. Steigt jedes Jahr zum 1. Juli.')}
+      <div class="grid2">${jahre.map(y=>`<div><label class="f">Durchschnittsentgelt ${y}</label><input inputmode="decimal" data-rde="${y}" value="${r.de[y]??''}"></div>`).join('')}</div>
+      <div class="hint">Jahresbrutto ÷ Durchschnittsentgelt = Entgeltpunkte des Jahres.</div>
+      <div class="grid2">
+        <div><label class="f">KV-Zusatzbeitrag (%)</label><input inputmode="decimal" data-rente="kvZusatz" value="${String(r.kvZusatz).replace('.',',')}"></div>
+        <div><label class="f">Pflegeversicherung (%)</label><input inputmode="decimal" data-rente="pv" value="${String(r.pv).replace('.',',')}"></div>
+      </div>
+      <div class="hint">Rentner zahlen 7,3 % + halben Zusatzbeitrag zur KV und die Pflegeversicherung voll (3,6 %, kinderlos 4,2 %).</div>
+      ${f('anpassung','Angenommene Rentenerhöhung pro Jahr (%)')}`);
+}
+
 /* ---------- Einstellungen ---------- */
 function renderEinst(){
   const st=S.settings, k=st.kal; setNav(''); setTitle('Einstellungen', APP_VERSION);
@@ -645,6 +838,7 @@ function setTitle(t,s){
   if(tab==='jahr') off = curYear!==n.getFullYear();
   document.getElementById('todayBtn').hidden=!off;
 }
+document.getElementById('setBtn').addEventListener('click',()=>{ tab = tab==='einst' ? 'start' : 'einst'; render(); scrollTo(0,0); });
 document.getElementById('todayBtn').addEventListener('click',()=>{
   const n=new Date(); curMon=monday(n); curMonth=new Date(n.getFullYear(),n.getMonth(),1); curYear=n.getFullYear(); render(); scrollTo(0,0);
 });
@@ -669,7 +863,8 @@ document.querySelector('.tabbar').addEventListener('click',ev=>{const b=ev.targe
 document.getElementById('sheetBg').addEventListener('click',closeSheet);
 
 const onClick=ev=>{
-  const t=ev.target.closest('[data-act],[data-edit],[data-coll],[data-fart],[data-fday],[data-kaltyp],[data-tpldel],[data-month]'); if(!t) return;
+  const t=ev.target.closest('[data-act],[data-edit],[data-go],[data-coll],[data-fart],[data-fday],[data-kaltyp],[data-tpldel],[data-month]'); if(!t) return;
+  if(t.dataset.go){ tab=t.dataset.go; render(); scrollTo(0,0); return; }
   if(t.dataset.coll){ const id=t.dataset.coll; UI[id]=!UI[id]; uiSave(); t.closest('.coll').classList.toggle('open',!!UI[id]); return; }
   if(t.dataset.fart){ fill.art = fill.art===t.dataset.fart?null:t.dataset.fart; return render(); }
   if(t.dataset.fday){ const s=t.dataset.fday; fill.days = fill.days.includes(s)?fill.days.filter(x=>x!==s):[...fill.days,s]; return render(); }
@@ -728,6 +923,8 @@ app.addEventListener('change',ev=>{
     const k=`${curMonth.getFullYear()}-${pad(curMonth.getMonth()+1)}`;
     S.monate[k]=S.monate[k]||{}; S.monate[k][el.dataset.money]=el.value.trim(); save(); render(); return;
   }
+  if(el.dataset.rente){ const k=el.dataset.rente, v=el.value.trim(); S.settings.rente[k] = el.type==='date' ? v : (v===''?'':num(v)); save(); render(); toast('Gespeichert'); return; }
+  if(el.dataset.rde){ const v=el.value.trim(); if(v==='') delete S.settings.rente.de[el.dataset.rde]; else S.settings.rente.de[el.dataset.rde]=num(v); save(); render(); toast('Gespeichert'); return; }
   if(el.dataset.ujahr){
     S.urlaubJahr=S.urlaubJahr||{}; const v=el.value.trim();
     if(v==='') delete S.urlaubJahr[el.dataset.ujahr]; else S.urlaubJahr[el.dataset.ujahr]=num(v);
@@ -748,9 +945,10 @@ app.addEventListener('change',ev=>{
     const fr=new FileReader();
     fr.onload=()=>{ try{
       const d=JSON.parse(fr.result); if(!d.days) throw 0;
-      if(!confirm(`Backup mit ${Object.keys(d.days).length} Tagen laden? Vorhandene Einträge mit gleichem Datum werden überschrieben.`)) return;
+      const nT=Object.keys(d.days).length;
+      if(!confirm(nT?`Backup mit ${nT} Tagen laden? Vorhandene Einträge mit gleichem Datum werden überschrieben.`:'Einstellungen aus der Datei übernehmen?')) return;
       Object.assign(S.days,d.days); Object.assign(S.monate,d.monate||{}); if(d.urlaubJahr) S.urlaubJahr=Object.assign(S.urlaubJahr||{},d.urlaubJahr); if(d.settings) S.settings=Object.assign(S.settings,d.settings);
-      save(); render(); toast('Backup geladen');
+      save(); load(); render(); toast(nT?'Backup geladen':'Übernommen');
     }catch(e){ alert('Datei konnte nicht gelesen werden.'); } };
     fr.readAsText(el.files[0]); el.value='';
   }

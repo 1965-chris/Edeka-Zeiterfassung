@@ -156,7 +156,7 @@ h2{font-size:15px;margin:4px 0 8px}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.1';
+const APP_VERSION = 'v2.2';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -572,9 +572,11 @@ function kalLine(s){
     const endD = toMin(e.bis)<toMin(e.von) ? iso(addDays(parse(s),1)) : s;
     const n=(e.notiz||'').toLowerCase(), w=(k.regelWort||'').toLowerCase();
     const ort = (w && k.regelOrt && n.includes(w)) ? k.regelOrt : k.ort;
-    return [d,'Edeka',`${d} ${e.von}`,`${deDat(endD)} ${e.bis}`,clean(ort),clean(e.notiz)].join('|');
+    const tp=S.settings.schichten.find(t=>t.von===e.von&&t.bis===e.bis);
+    const info=[tp?tp.name:'Schicht', clean(e.notiz)].filter(Boolean).join(' · ');
+    return [d,'Edeka',`${d} ${e.von}`,`${deDat(endD)} ${e.bis}`,clean(ort)||'EDEKA',info].join('|');
   }
-  if(e.typ==='urlaub' && k.urlaubGanz) return [d,'Urlaub',`${d} 00:00`,`${d} 00:00`,'',clean(e.notiz)].join('|');
+  if(e.typ==='urlaub' && k.urlaubGanz) return `${d}|Urlaub`;
   return d;
 }
 function commitKal(dates){

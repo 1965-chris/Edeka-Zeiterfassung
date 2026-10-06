@@ -143,6 +143,16 @@ h2{font-size:15px;margin:4px 0 8px}
 .nx:last-child{border-bottom:0}
 .nx b{min-width:72px}
 .today-big{font-size:22px;font-weight:800;margin:2px 0}
+.swipe{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;margin:0 -16px;scrollbar-width:none;-webkit-overflow-scrolling:touch;overscroll-behavior-x:contain}
+.swipe::-webkit-scrollbar{display:none}
+.pg{flex:0 0 100%;min-width:0;padding:0 16px;scroll-snap-align:start;scroll-snap-stop:always}
+.dots{display:flex;justify-content:center;gap:7px;margin:2px 0 0}
+.dots span{width:7px;height:7px;border-radius:50%;background:var(--line)}
+.dots span.on{background:var(--accent)}
+.cd-hero{padding:26px 14px}
+.cd-hero .big{font-size:56px}
+.huge-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
+.huge-grid .stat .v{font-size:24px}
 .big{font-size:40px;font-weight:800;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1.1}
 .bar{height:10px;border-radius:99px;background:var(--line);overflow:hidden;margin-top:10px}
 .bar>div{height:100%;background:var(--accent);border-radius:99px}
@@ -171,7 +181,7 @@ table.calc2 tr.sum td{font-weight:700;border-top:2px solid var(--line)}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.4';
+const APP_VERSION = 'v2.5';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -580,16 +590,41 @@ function countdownCard(klein){
   let arb=0; for(const [k,e] of Object.entries(S.days)){ const d=parse(k); if(e.typ==='arbeit' && d<=heute && (heute-d)/864e5<365) arb++; }
   const quote = arb>50 ? arb/365 : 5/7*0.88;
   const vb=r.versBeginn?parse(r.versBeginn):null, prozent = vb ? Math.min(100,(heute-vb)/(b-vb)*100) : null;
-  const c = klein && num(r.infoEP) ? renteCalc(r.beginn) : null;
   return `<div class="card ${klein?'dash':''}" ${klein?'data-go="rente"':''} style="text-align:center">
     ${klein?`<h2>🏖️ Rente am ${de2(r.beginn)} <span>›</span></h2>`:'<div class="muted">Noch bis zur Rente</div>'}
     <div class="big">${tage.toLocaleString('de-DE')} Tage</div>
     <div style="font-weight:600;margin-top:4px">${x.y} Jahre · ${x.m} Monate · ${x.d} Tage</div>
     <div class="muted" style="margin-top:4px">≈ ${Math.round(tage*quote).toLocaleString('de-DE')} Arbeitstage · ${Math.floor(tage/7).toLocaleString('de-DE')} Wochen</div>
     ${prozent!=null?`<div class="bar"><div style="width:${prozent.toFixed(1)}%"></div></div><div class="hint">${fmt(prozent)} % des Arbeitslebens geschafft 💪</div>`:''}
-    ${c?`<div class="hint">Rente ca. <b>${eur(c.netto)}</b> netto (heutiger Wert)</div>`:''}
   </div>`;
 }
+function counterHero(){
+  const r=S.settings.rente, now=new Date(), heute=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  if(!r.beginn) return `<div class="card dash cd-hero" data-go="rente" style="text-align:center"><div class="big">🏖️</div><div style="margin-top:8px">Rentenbeginn eintragen</div><div class="muted">Tab „Rente“ → Rentenbeginn</div></div>`;
+  const b=parse(r.beginn), tage=Math.round((b-heute)/864e5);
+  if(tage<=0) return `<div class="card cd-hero" style="text-align:center"><div class="big">🎉</div><div class="today-big">Du bist in Rente!</div></div>`;
+  const x=ymd(heute,b);
+  let arb=0; for(const [k,e] of Object.entries(S.days)){ const d=parse(k); if(e.typ==='arbeit' && d<=heute && (heute-d)/864e5<365) arb++; }
+  const quote = arb>50 ? arb/365 : 5/7*0.88;
+  const vb=r.versBeginn?parse(r.versBeginn):null, prozent = vb ? Math.min(100,(heute-vb)/(b-vb)*100) : null;
+  return `<div class="card cd-hero" style="text-align:center">
+    <div class="muted">🏖️ Noch bis zur Rente am ${de2(r.beginn)}</div>
+    <div class="big" style="margin-top:6px">${tage.toLocaleString('de-DE')}</div>
+    <div style="font-weight:700;font-size:18px">Tage</div>
+    <div class="huge-grid">
+      <div class="stat"><div class="v">${x.y}</div><div class="l">Jahre</div></div>
+      <div class="stat"><div class="v">${x.m}</div><div class="l">Monate</div></div>
+      <div class="stat"><div class="v">${x.d}</div><div class="l">Tage</div></div>
+    </div>
+    <div class="huge-grid">
+      <div class="stat"><div class="v">${Math.floor(tage/7).toLocaleString('de-DE')}</div><div class="l">Wochen</div></div>
+      <div class="stat" style="grid-column:span 2"><div class="v">≈ ${Math.round(tage*quote).toLocaleString('de-DE')}</div><div class="l">Arbeitstage</div></div>
+    </div>
+    ${prozent!=null?`<div class="bar" style="height:14px;margin-top:18px"><div style="width:${prozent.toFixed(1)}%"></div></div><div class="hint">${fmt(prozent)} % des Arbeitslebens geschafft 💪</div>`:''}
+  </div>
+  <div class="hint" style="text-align:center">Wischen für die Übersicht ›</div>`;
+}
+let startPage=0;
 function eintragText(e){
   if(!e) return '<span class="muted">kein Eintrag</span>';
   if(e.typ==='arbeit') return `${esc(kurz(e))}${e.von?` <span class="muted">${e.von}–${e.bis}</span>`:''}`;
@@ -611,7 +646,7 @@ function renderStart(){
   let urlaub=0; for(const [k,x] of Object.entries(S.days)) if(k.startsWith(y+'-') && x.typ==='urlaub') urlaub++;
   const m=heute.getMonth(), mr=monat(y,m), g=S.monate[`${y}-${pad(m+1)}`]||{};
   let bisher=0; for(let i=1;i<=heute.getDate();i++) bisher+=stunden(S.days[`${y}-${pad(m+1)}-${pad(i)}`]);
-  app.innerHTML=`
+  app.innerHTML=`<div class="dots"><span class="${startPage===0?'on':''}"></span><span class="${startPage===1?'on':''}"></span></div><div class="swipe" id="swipe"><section class="pg">${counterHero()}</section><section class="pg">
   <div class="card" data-edit="${hs}" style="cursor:pointer">
     <div class="muted">Heute${ft?' · 🎉 '+ft:''}</div>
     <div class="today-big">${eintragText(e)}</div>
@@ -627,14 +662,17 @@ function renderStart(){
     <h2>Als Nächstes <span>›</span></h2>
     ${nx||'<div class="muted">Keine Einträge in den nächsten 3 Wochen.</div>'}
   </div>
-  ${countdownCard(true)}
   <div class="card dash" data-go="monat">
     <h2>${MON[m]} <span>›</span></h2>
     <div class="grid2">
       <div><div class="muted">Stunden geplant</div><b>${fmt(mr.std)}</b></div>
       <div><div class="muted">Netto/Std</div><b>${num(g.netto)&&mr.std?eur(num(g.netto)/mr.std):'–'}</b></div>
     </div>
-  </div>`;
+  </div></section></div>`;
+  const sw=document.getElementById('swipe');
+  sw.scrollLeft = startPage*sw.clientWidth;
+  setTitle(startPage?'Übersicht':'Countdown', `${WTL[heute.getDay()]}, ${de2(hs)}`);
+  sw.addEventListener('scroll',()=>{ const p=Math.round(sw.scrollLeft/sw.clientWidth); if(p!==startPage){ startPage=p; document.querySelectorAll('.dots span').forEach((d,i)=>d.classList.toggle('on',i===p)); document.getElementById('title').textContent=p?'Übersicht':'Countdown'; } },{passive:true});
 }
 function renderRente(){
   const r=S.settings.rente, now=new Date(), heute=new Date(now.getFullYear(),now.getMonth(),now.getDate());
@@ -917,27 +955,35 @@ document.querySelector('header').addEventListener('click',onClick);
 document.addEventListener('gesturestart',e=>e.preventDefault());
 document.addEventListener('dblclick',e=>e.preventDefault(),{passive:false});
 
+/* Neu zeichnen erst, wenn kein Eingabefeld mehr aktiv ist (sonst verliert man den Fokus) */
+let pendingRender=false;
+const isTyping = el => el && ((el.tagName==='INPUT' && !/^(checkbox|radio|button|file)$/.test(el.type)) || el.tagName==='SELECT' || el.tagName==='TEXTAREA');
+function softRender(){
+  pendingRender=true;
+  setTimeout(()=>{ if(!pendingRender) return; const a=document.activeElement; if(isTyping(a) && app.contains(a)) return; pendingRender=false; const y=scrollY; render(); scrollTo(0,y); },350);
+}
+app.addEventListener('focusout',()=>{ if(pendingRender) softRender(); });
 app.addEventListener('change',ev=>{
   const el=ev.target;
   if(el.dataset.money){
     const k=`${curMonth.getFullYear()}-${pad(curMonth.getMonth()+1)}`;
-    S.monate[k]=S.monate[k]||{}; S.monate[k][el.dataset.money]=el.value.trim(); save(); render(); return;
+    S.monate[k]=S.monate[k]||{}; S.monate[k][el.dataset.money]=el.value.trim(); save(); softRender(); return;
   }
-  if(el.dataset.rente){ const k=el.dataset.rente, v=el.value.trim(); S.settings.rente[k] = el.type==='date' ? v : (v===''?'':num(v)); save(); render(); toast('Gespeichert'); return; }
-  if(el.dataset.rde){ const v=el.value.trim(); if(v==='') delete S.settings.rente.de[el.dataset.rde]; else S.settings.rente.de[el.dataset.rde]=num(v); save(); render(); toast('Gespeichert'); return; }
+  if(el.dataset.rente){ const k=el.dataset.rente, v=el.value.trim(); S.settings.rente[k] = el.type==='date' ? v : (v===''?'':num(v)); save(); softRender(); toast('Gespeichert'); return; }
+  if(el.dataset.rde){ const v=el.value.trim(); if(v==='') delete S.settings.rente.de[el.dataset.rde]; else S.settings.rente.de[el.dataset.rde]=num(v); save(); softRender(); toast('Gespeichert'); return; }
   if(el.dataset.ujahr){
     S.urlaubJahr=S.urlaubJahr||{}; const v=el.value.trim();
     if(v==='') delete S.urlaubJahr[el.dataset.ujahr]; else S.urlaubJahr[el.dataset.ujahr]=num(v);
-    save(); render(); toast('Gespeichert'); return;
+    save(); softRender(); toast('Gespeichert'); return;
   }
   if(el.dataset.set){
     const k=el.dataset.set;
     if(el.type==='checkbox') S.settings[k]=el.checked;
     else if(k==='startDatum') S.settings[k]=el.value ? iso(monday(parse(el.value))) : '';
     else S.settings[k]=num(el.value);
-    save(); render(); toast('Gespeichert'); return;
+    save(); softRender(); toast('Gespeichert'); return;
   }
-  if(el.dataset.kal){ const k=el.dataset.kal; S.settings.kal[k]= el.type==='checkbox'?el.checked:el.value.trim(); save(); if(el.type==='checkbox') render(); else renderKalBar(); toast('Gespeichert'); return; }
+  if(el.dataset.kal){ const k=el.dataset.kal; S.settings.kal[k]= el.type==='checkbox'?el.checked:el.value.trim(); save(); if(el.type==='checkbox') softRender(); else renderKalBar(); toast('Gespeichert'); return; }
   if(el.dataset.tplf){
     const [i,f]=el.dataset.tplf.split(':'); S.settings.schichten[+i][f]= f==='pause'?(parseInt(el.value)||0):el.value; save(); return;
   }

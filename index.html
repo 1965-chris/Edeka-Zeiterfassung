@@ -71,6 +71,7 @@ main{padding:0 16px 16px;max-width:640px;margin:0 auto}
 .btn.danger{background:transparent;color:var(--minus)}
 .btn.small{padding:7px 11px;font-size:13px}
 .btn.on{background:var(--accent);color:#fff}
+.btn:disabled{opacity:.45}
 label.f{display:block;font-size:12px;color:var(--muted);margin:10px 0 4px}
 input,select,textarea{width:100%;font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px}
 input,select{min-width:0;max-width:100%;-webkit-appearance:none;appearance:none;min-height:44px}
@@ -117,10 +118,29 @@ h2{font-size:15px;margin:4px 0 8px}
 .tpl label{display:block;font-size:11px;color:var(--muted);margin-bottom:3px}
 .tpl input{padding:8px 10px}
 .tpl .btn{height:44px;padding:0}
+.coll{padding:0}
+.coll-h{display:flex;width:100%;align-items:center;justify-content:space-between;border:0;background:none;color:var(--text);padding:14px;font:inherit;text-align:left}
+.coll-h h2{margin:0}
+.coll-h .chev{color:var(--muted);font-size:20px;transition:transform .2s;line-height:1}
+.coll.open .coll-h .chev{transform:rotate(90deg)}
+.coll-b{display:none;padding:0 14px 14px}
+.coll.open .coll-b{display:block}
+.coll-h .badge{font-size:12px;color:var(--muted);font-weight:500;margin-left:8px}
+.days7{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.days7 button{border:1px solid var(--line);background:var(--bg);color:var(--text);border-radius:10px;padding:6px 2px;font-size:12px;line-height:1.25;min-width:0}
+.days7 button b{display:block;font-size:13px}
+.days7 button span{display:block;color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.days7 button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.days7 button.on span{color:#fff;opacity:.85}
+.kalbar{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 10px;border-radius:12px;background:#fff3e0;color:#8a4b00;font-size:14px;font-weight:600}
+@media (prefers-color-scheme: dark){ .kalbar{background:#3a2a12;color:#ffc77a} }
+.kalbar span{flex:1}
+.kalbar button{border:0;border-radius:10px;padding:7px 12px;font-weight:700;background:#e67e22;color:#fff;font-size:14px}
+.kalbar button.x{background:transparent;color:inherit;padding:7px 6px}
 </style>
 </head>
 <body>
-<header class="hdr"><div class="top"><div><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></div><button class="todaybtn" id="todayBtn" hidden>Heute</button></div><div id="navbar"></div></header>
+<header class="hdr"><div class="top"><div><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></div><button class="todaybtn" id="todayBtn" hidden>Heute</button></div><div id="navbar"></div><div id="kalbar"></div></header>
 <main id="app"></main>
 
 <nav class="tabbar">
@@ -136,7 +156,7 @@ h2{font-size:15px;margin:4px 0 8px}
 
 <script>
 'use strict';
-const APP_VERSION = 'v1.11';
+const APP_VERSION = 'v2.1';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -154,7 +174,10 @@ const TYPEN = {
 const DEFAULT = {
   settings:{
     sollTag:6.25, wochenSoll:37.5, startDatum:'', startSaldo:0, urlaubAnspruch:0, feiertageNRW:true,
-    kal:{an:false, name:'Schicht löschen', typen:['frei','abbau'], urlaubAn:false, urlaubName:'Urlaub eintragen'},
+    kal:{v:2, an:false, name:'Schicht löschen', sofort:false, urlaubGanz:true,
+         typen:['arbeit','frei','abbau','urlaub','krank','feiertag'],
+         ort:'EDEKA Möller, Elsa-Neumann-Straße 6, 40789 Monheim am Rhein',
+         regelWort:'Baumberg', regelOrt:'EDEKA Möller, Geschwister-Scholl-Straße 69'},
     schichten:[
       {name:'Früh',  von:'05:45', bis:'13:45', pause:30},
       {name:'Spät',  von:'13:15', bis:'21:15', pause:30},
@@ -167,9 +190,24 @@ let S;
 function load(){
   try{ S = JSON.parse(localStorage.getItem(KEY)) || null; }catch(e){ S = null; }
   if(!S) S = structuredClone(DEFAULT);
+  const altKal = (S.settings||{}).kal || {};
   S.settings = Object.assign(structuredClone(DEFAULT.settings), S.settings||{});
-  S.settings.kal = Object.assign(structuredClone(DEFAULT.settings.kal), S.settings.kal||{});
-  S.days = S.days||{}; S.monate = S.monate||{};
+  S.settings.kal = Object.assign(structuredClone(DEFAULT.settings.kal), altKal);
+  { const k=S.settings.kal; if(k.ort==='EDEKA Möller, Geschwister-Scholl-Straße 69' && k.regelOrt==='EDEKA Möller, Elsa-Neumann-Straße 6, 40789 Monheim am Rhein'){ k.ort=DEFAULT.settings.kal.ort; k.regelOrt=DEFAULT.settings.kal.regelOrt; } }
+  if(!altKal.v){ const k=S.settings.kal; k.v=2; k.typen=[...DEFAULT.settings.kal.typen]; delete k.urlaubAn; delete k.urlaubName; }
+  S.days = S.days||{}; S.monate = S.monate||{}; S.kalQ = S.kalQ||[];
+}
+/* UI-Zustand (aufgeklappte Bereiche) – nur Komfort */
+let UI={}; try{ UI=JSON.parse(localStorage.getItem('zeiterfassung-ui'))||{}; }catch(e){ UI={}; }
+function uiSave(){ try{ localStorage.setItem('zeiterfassung-ui',JSON.stringify(UI)); }catch(e){} }
+function sec(id,title,body,badge){
+  return `<div class="card coll ${UI[id]?'open':''}" data-sec="${id}"><button class="coll-h" data-coll="${id}"><h2>${title}${badge?`<span class="badge">${badge}</span>`:''}</h2><span class="chev">›</span></button><div class="coll-b">${body}</div></div>`;
+}
+/* Tag setzen/löschen, meldet ob sich etwas geändert hat */
+function setDay(s,e){
+  const vorher=JSON.stringify(S.days[s]||null);
+  if(e) S.days[s]=e; else delete S.days[s];
+  return vorher!==JSON.stringify(e||null);
 }
 function save(){
   try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){ toast('Speichern fehlgeschlagen!'); }
@@ -253,6 +291,7 @@ function toast(t){const el=document.getElementById('toast');el.textContent=t;el.
 
 function render(){
   document.querySelectorAll('.tabbar button').forEach(b=>b.classList.toggle('act',b.dataset.tab===tab));
+  renderKalBar();
   ({woche:renderWoche,monat:renderMonat,jahr:renderJahr,einst:renderEinst})[tab]();
 }
 
@@ -288,17 +327,31 @@ function renderWoche(){
     <div class="stat"><div class="v ${saldoNeu>=0?'pos':'neg'}">${fmtS(saldoNeu)}</div><div class="l">Konto</div></div>
   </div>
   <div class="card">${rows}</div>
-  <div class="card">
-    <h2>Woche ausfüllen</h2>
-    <div class="muted" style="margin-bottom:8px">Füllt leere Tage Mo–Sa mit der Schicht, Feiertage werden automatisch gesetzt. Den freien Tag danach einfach antippen.</div>
-    <div class="row">${S.settings.schichten.map((t,i)=>`<button class="btn small" data-fill="${i}">${esc(t.name)}</button>`).join('')}
-</div>
-  </div>
-  <div class="card">
-    <h2>Zeitraum eintragen</h2>
-    <div class="muted" style="margin-bottom:8px">Urlaub, Krank oder Frei für mehrere Tage auf einmal – mit nur einem Kalender-Durchgang.</div>
-    <button class="btn" data-act="range">📅 Zeitraum eintragen…</button>
-  </div>`;
+  ${fillCard(mo)}`;
+}
+
+/* ---------- Mehrere Tage eintragen ---------- */
+let fill={art:null,days:[]};
+function kurz(e){
+  if(!e) return '–';
+  if(e.typ==='arbeit'){ const t=S.settings.schichten.find(t=>t.von===e.von&&t.bis===e.bis); return t?t.name:(e.von||'Arbeit'); }
+  return TYPEN[e.typ].name;
+}
+function fillCard(mo){
+  const arts=[...S.settings.schichten.map((t,i)=>({k:'tpl:'+i,n:t.name})),{k:'frei',n:'Frei'},{k:'abbau',n:'Ü-Abbau'},{k:'urlaub',n:'Urlaub'},{k:'krank',n:'Krank'}];
+  let tage='';
+  for(let i=0;i<7;i++){ const d=addDays(mo,i), s=iso(d);
+    tage+=`<button data-fday="${s}" class="${fill.days.includes(s)?'on':''}"><b>${WT[d.getDay()]}</b>${pad(d.getDate())}.<span>${feiertag(s)?'🎉':esc(kurz(S.days[s]))}</span></button>`; }
+  const n=fill.days.length;
+  return sec('fill','Mehrere Tage eintragen',`
+    <label class="f">1. Was eintragen?</label>
+    <div class="row">${arts.map(a=>`<button class="btn small ${fill.art===a.k?'on':''}" data-fart="${a.k}">${esc(a.n)}</button>`).join('')}</div>
+    <label class="f">2. Welche Tage?</label>
+    <div class="days7">${tage}</div>
+    <div class="row" style="margin-top:6px"><button class="btn small" data-act="fillmosa">Mo–Sa</button><button class="btn small" data-act="fillnone">Auswahl leeren</button></div>
+    <button class="btn primary" data-act="fillgo" style="width:100%;margin-top:12px" ${!fill.art||!n?'disabled':''}>${n?`Für ${n} Tag${n>1?'e':''} übernehmen`:'Tage antippen'}</button>
+    <div class="hint">Vorhandene Einträge der gewählten Tage werden ersetzt. Eine Bemerkung (z. B. Baumberg) bleibt bei Schichten erhalten.</div>
+    <button class="btn" data-act="range" style="width:100%;margin-top:12px">📅 Längeren Zeitraum eintragen…</button>`);
 }
 
 /* ---------- Tag bearbeiten ---------- */
@@ -456,10 +509,9 @@ function renderJahr(){
 
 /* ---------- Einstellungen ---------- */
 function renderEinst(){
-  const st=S.settings; setNav(''); setTitle('Einstellungen', APP_VERSION);
-  app.innerHTML=`
-  <div class="card">
-    <h2>Arbeitszeit</h2>
+  const st=S.settings, k=st.kal; setNav(''); setTitle('Einstellungen', APP_VERSION);
+  app.innerHTML=
+  sec('s_arbeit','Arbeitszeit',`
     <div class="grid2">
       <div><label class="f">Soll pro Woche (Std.)</label><input inputmode="decimal" data-set="wochenSoll" value="${fmt(st.wochenSoll)}"></div>
       <div><label class="f">Gutschrift pro Tag (Std.)</label><input inputmode="decimal" data-set="sollTag" value="${fmt(st.sollTag)}"></div>
@@ -467,60 +519,80 @@ function renderEinst(){
     <div class="hint">Gutschrift gilt für Urlaub, Feiertag und Krank.</div>
     <label class="f">Urlaubsanspruch pro Jahr (Tage)</label><input inputmode="numeric" data-set="urlaubAnspruch" value="${st.urlaubAnspruch||''}">
     <div class="hint">Standardwert. Abweichende Jahre (z. B. anteilig im Eintrittsjahr) im Tab „Jahr“ anpassen.</div>
-    <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-set="feiertageNRW" ${st.feiertageNRW?'checked':''}> Feiertage NRW automatisch erkennen</label>
-  </div>
-  <div class="card">
-    <h2>Überstundenkonto</h2>
+    <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-set="feiertageNRW" ${st.feiertageNRW?'checked':''}> Feiertage NRW automatisch erkennen</label>`)
+  +sec('s_konto','Überstundenkonto',`
     <div class="grid2">
       <div><label class="f">Startdatum (Montag)</label><input type="date" data-set="startDatum" value="${st.startDatum}"></div>
       <div><label class="f">Startsaldo (Std.)</label><input inputmode="decimal" data-set="startSaldo" value="${fmt(num(st.startSaldo))}"></div>
     </div>
-    <div class="muted" style="margin-top:8px">Ab dem Startdatum wird jede abgeschlossene Woche (Ist − Soll) aufs Konto gebucht. Wochen ganz ohne Einträge werden übersprungen.</div>
-  </div>
-  <div class="card">
-    <h2>Schicht-Vorlagen</h2>
+    <div class="hint">Ab dem Startdatum wird jede abgeschlossene Woche (Ist − Soll) aufs Konto gebucht. Wochen ganz ohne Einträge werden übersprungen.</div>`)
+  +sec('s_tpl','Schicht-Vorlagen',`
     ${st.schichten.map((t,i)=>`<div class="tpl">
       <div class="name"><label>Name</label><input data-tplf="${i}:name" value="${esc(t.name)}"></div>
       <div><label>Von</label><input type="time" data-tplf="${i}:von" value="${t.von}"></div>
       <div><label>Bis</label><input type="time" data-tplf="${i}:bis" value="${t.bis}"></div>
       <div><label>Pause</label><input inputmode="numeric" data-tplf="${i}:pause" value="${t.pause}"></div>
       <button class="btn danger" data-tpldel="${i}" aria-label="Löschen">✕</button></div>`).join('')}
-    <button class="btn small" data-act="tpladd">+ Vorlage</button>
-  </div>
-  <div class="card">
-    <h2>Kalender (iPhone)</h2>
-    <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-kal="an" ${st.kal.an?'checked':''}> Schicht im Kalender löschen, wenn ein Tag frei wird</label>
-    <label class="f">Name des Kurzbefehls</label><input data-kal="name" value="${esc(st.kal.name)}">
-    <label class="f">Auslösen bei</label>
-    <div class="row">${['frei','abbau','urlaub','krank','sonder'].map(t=>`<button class="btn small ${st.kal.typen.includes(t)?'on':''}" data-kaltyp="${t}">${TYPEN[t].name}</button>`).join('')}</div>
-    <div class="hint">Beim Speichern startet die App den Kurzbefehl mit dem Datum (TT.MM.JJJJ, bei Zeiträumen ein Datum pro Zeile). Danach zurück in die App wechseln.</div>
-    <label class="f" style="display:flex;gap:8px;align-items:center;margin-top:14px"><input type="checkbox" data-kal="urlaubAn" ${st.kal.urlaubAn?'checked':''}> Bei Urlaub: Schicht löschen <b>und</b> Urlaub eintragen</label>
-    <label class="f">Name des Urlaubs-Kurzbefehls</label><input data-kal="urlaubName" value="${esc(st.kal.urlaubName)}">
-    <div class="row" style="margin-top:8px"><button class="btn small" data-act="kaltest">Kurzbefehl testen (heute)</button></div>
-  </div>
-  <div class="card">
-    <h2>Daten</h2>
+    <button class="btn small" data-act="tpladd">+ Vorlage</button>`, st.schichten.length+'')
+  +sec('s_kal','Kalender (iPhone)',`
+    <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-kal="an" ${k.an?'checked':''}> Kalender automatisch anpassen</label>
+    <label class="f">Name des Kurzbefehls</label><input data-kal="name" value="${esc(k.name)}">
+    <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-kal="sofort" ${k.sofort?'checked':''}> Jede Änderung sofort senden</label>
+    <div class="hint">Aus = Änderungen werden gesammelt und oben mit „Senden“ gemeinsam übertragen (nur ein Sprung in die Kurzbefehle-App).</div>
+    <label class="f">Abgleichen bei</label>
+    <div class="row">${['arbeit','frei','abbau','urlaub','krank','feiertag','sonder'].map(t=>`<button class="btn small ${k.typen.includes(t)?'on':''}" data-kaltyp="${t}">${TYPEN[t].name}</button>`).join('')}</div>
+    <label class="f" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" data-kal="urlaubGanz" ${k.urlaubGanz?'checked':''}> Urlaub als ganztägigen Termin eintragen</label>
+    <label class="f">Ort der Schicht (Standard)</label><input data-kal="ort" value="${esc(k.ort)}">
+    <label class="f">Wenn Bemerkung enthält …</label><input data-kal="regelWort" value="${esc(k.regelWort)}">
+    <label class="f">… dann dieser Ort</label><input data-kal="regelOrt" value="${esc(k.regelOrt)}">
+    <div class="hint">Arbeit → Termin „Edeka“ mit Zeit, Ort und Bemerkung. Urlaub → ganztägig „Urlaub“. Frei, Ü-Abbau, Krank, Feiertag → Schicht wird gelöscht. Nicht markierte Arten (z. B. Sonderurlaub) bleiben unangetastet.</div>
+    <button class="btn small" data-act="kalweek" style="margin-top:10px">KW ${kw(curMon)} komplett senden</button>`, k.an?'an':'aus')
+  +sec('s_daten','Daten',`
     <div class="row">
       <button class="btn" data-act="export">Backup exportieren</button>
       <button class="btn" data-act="import">Backup laden</button>
       <button class="btn" data-act="csv">CSV (Excel)</button>
     </div>
     <input type="file" id="impFile" accept=".json,application/json" style="display:none">
-    <div class="muted" style="margin-top:8px">${Object.keys(S.days).length} Tage erfasst. Daten liegen nur auf diesem Gerät – regelmäßig ein Backup in iCloud/Dateien sichern.</div>
-  </div>`;
+    <div class="hint">${Object.keys(S.days).length} Tage erfasst. Daten liegen nur auf diesem Gerät – regelmäßig ein Backup in iCloud/Dateien sichern.</div>`);
 }
 
 const deDat = s => { const d=parse(s); return `${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`; };
-function runShortcut(name, dates){
-  location.href='shortcuts://run-shortcut?name='+encodeURIComponent(name)+'&input=text&text='+encodeURIComponent(dates.map(deDat).join('\n'));
+function runShortcut(name, text){
+  location.href='shortcuts://run-shortcut?name='+encodeURIComponent(name)+'&input=text&text='+encodeURIComponent(text);
 }
-function kalLoeschen(s){ runShortcut(S.settings.kal.name,[s]); }
-/* entscheidet, welcher Kurzbefehl für einen Typ läuft */
-function kalSync(typ, dates){
-  const k=S.settings.kal||{}; if(!k.an || !dates.length) return false;
-  if(typ==='urlaub' && k.urlaubAn && k.urlaubName){ setTimeout(()=>runShortcut(k.urlaubName,dates),350); return true; }
-  if(k.name && (k.typen||[]).includes(typ)){ setTimeout(()=>runShortcut(k.name,dates),350); return true; }
-  return false;
+/* Eine Zeile pro Tag:  TT.MM.JJJJ|Titel|Start|Ende|Ort|Notiz
+   nur Datum = an dem Tag Edeka/Urlaub löschen, nichts Neues eintragen */
+function kalLine(s){
+  const k=S.settings.kal, e=S.days[s], d=deDat(s), clean=x=>String(x||'').replace(/[|\r\n]+/g,' ').trim();
+  if(!e) return d;
+  if(!k.typen.includes(e.typ)) return null;
+  if(e.typ==='arbeit'){
+    if(!e.von||!e.bis) return null;
+    const endD = toMin(e.bis)<toMin(e.von) ? iso(addDays(parse(s),1)) : s;
+    const n=(e.notiz||'').toLowerCase(), w=(k.regelWort||'').toLowerCase();
+    const ort = (w && k.regelOrt && n.includes(w)) ? k.regelOrt : k.ort;
+    return [d,'Edeka',`${d} ${e.von}`,`${deDat(endD)} ${e.bis}`,clean(ort),clean(e.notiz)].join('|');
+  }
+  if(e.typ==='urlaub' && k.urlaubGanz) return [d,'Urlaub',`${d} 00:00`,`${d} 00:00`,'',clean(e.notiz)].join('|');
+  return d;
+}
+function commitKal(dates){
+  const k=S.settings.kal; if(!k.an || !dates.length) return;
+  for(const s of dates) if(!S.kalQ.includes(s)) S.kalQ.push(s);
+  save(); renderKalBar();
+  if(k.sofort) setTimeout(sendKal,350);
+}
+function sendKal(){
+  const k=S.settings.kal, lines=S.kalQ.slice().sort().map(kalLine).filter(Boolean);
+  S.kalQ=[]; save(); renderKalBar();
+  if(!lines.length) return toast('Nichts für den Kalender zu tun');
+  if(!k.name) return toast('Kein Kurzbefehl eingetragen');
+  runShortcut(k.name, lines.join('\n'));
+}
+function renderKalBar(){
+  const el=document.getElementById('kalbar'), q=S.kalQ||[];
+  el.innerHTML = (S.settings.kal.an && q.length) ? `<div class="kalbar"><span>📅 ${q.length} Kalender-Änderung${q.length>1?'en':''}</span><button data-act="kalsend">Senden</button><button class="x" data-act="kalclear" aria-label="Verwerfen">✕</button></div>` : '';
 }
 /* ---------- Zeitraum ---------- */
 let rng=null;
@@ -595,21 +667,38 @@ document.querySelector('.tabbar').addEventListener('click',ev=>{const b=ev.targe
 document.getElementById('sheetBg').addEventListener('click',closeSheet);
 
 const onClick=ev=>{
-  const t=ev.target.closest('[data-act],[data-edit],[data-fill],[data-tpldel],[data-month]'); if(!t) return;
+  const t=ev.target.closest('[data-act],[data-edit],[data-coll],[data-fart],[data-fday],[data-kaltyp],[data-tpldel],[data-month]'); if(!t) return;
+  if(t.dataset.coll){ const id=t.dataset.coll; UI[id]=!UI[id]; uiSave(); t.closest('.coll').classList.toggle('open',!!UI[id]); return; }
+  if(t.dataset.fart){ fill.art = fill.art===t.dataset.fart?null:t.dataset.fart; return render(); }
+  if(t.dataset.fday){ const s=t.dataset.fday; fill.days = fill.days.includes(s)?fill.days.filter(x=>x!==s):[...fill.days,s]; return render(); }
   if(t.dataset.edit) return openEdit(t.dataset.edit);
   if(t.dataset.month){ curMonth=new Date(curYear,+t.dataset.month,1); tab='monat'; return render(); }
-  if(t.dataset.fill!==undefined){
-    const tp=S.settings.schichten[+t.dataset.fill]; let n=0;
-    for(let i=0;i<6;i++){ const s=iso(addDays(curMon,i)); if(S.days[s]) continue;
-      S.days[s]= feiertag(s) ? {typ:'feiertag'} : {typ:'arbeit',von:tp.von,bis:tp.bis,pause:tp.pause}; n++; }
-    save(); render(); return toast(n?`${n} Tage ausgefüllt`:'Keine leeren Tage');
-  }
   if(t.dataset.kaltyp){ const a=S.settings.kal.typen, x=t.dataset.kaltyp; S.settings.kal.typen = a.includes(x)?a.filter(v=>v!==x):[...a,x]; save(); return render(); }
   if(t.dataset.tpldel!==undefined){ if(confirm('Vorlage löschen?')){ S.settings.schichten.splice(+t.dataset.tpldel,1); save(); render(); } return; }
   switch(t.dataset.act){
-    case 'wprev': curMon=addDays(curMon,-7); break;
-    case 'wnext': curMon=addDays(curMon,7); break;
-    case 'wtoday': curMon=monday(new Date()); break;
+    case 'wprev': curMon=addDays(curMon,-7); fill.days=[]; break;
+    case 'wnext': curMon=addDays(curMon,7); fill.days=[]; break;
+    case 'wtoday': curMon=monday(new Date()); fill.days=[]; break;
+    case 'fillmosa': fill.days=[0,1,2,3,4,5].map(i=>iso(addDays(curMon,i))); break;
+    case 'fillnone': fill.days=[]; break;
+    case 'fillgo': {
+      if(!fill.art||!fill.days.length) return toast('Erst Auswahl und Tage wählen');
+      const ch=[], n=fill.days.length;
+      for(const s of fill.days){
+        let e;
+        if(fill.art.startsWith('tpl:')){ const tp=S.settings.schichten[+fill.art.slice(4)]; e={typ:'arbeit',von:tp.von,bis:tp.bis,pause:tp.pause}; const alt=S.days[s]; if(alt?.typ==='arbeit'&&alt.notiz) e.notiz=alt.notiz; }
+        else e={typ:fill.art};
+        if(setDay(s,e)) ch.push(s);
+      }
+      fill.days=[]; save(); commitKal(ch); render(); return toast(`${n} Tag${n>1?'e':''} eingetragen`);
+    }
+    case 'kalsend': sendKal(); return;
+    case 'kalclear': if(confirm('Gesammelte Kalender-Änderungen verwerfen? Der Kalender wird dann nicht angepasst.')){ S.kalQ=[]; save(); renderKalBar(); } return;
+    case 'kalweek': {
+      if(!S.settings.kal.an) return toast('Erst „Kalender automatisch anpassen“ einschalten');
+      if(!confirm(`Alle Tage der KW ${kw(curMon)} an den Kalender senden? Edeka- und Urlaubstermine dieser Woche werden neu eingetragen.`)) return;
+      for(let i=0;i<7;i++){ const s=iso(addDays(curMon,i)); if(!S.kalQ.includes(s)) S.kalQ.push(s); }
+      sendKal(); return; }
     case 'mprev': curMonth=new Date(curMonth.getFullYear(),curMonth.getMonth()-1,1); break;
     case 'mnext': curMonth=new Date(curMonth.getFullYear(),curMonth.getMonth()+1,1); break;
     case 'yprev': curYear--; break;
@@ -623,12 +712,11 @@ const onClick=ev=>{
     case 'import': document.getElementById('impFile').click(); return;
     case 'csv': exportCSV(); return;
     case 'range': openRange(); return;
-    case 'kaltest': if(!confirm('Kurzbefehl mit dem heutigen Datum starten? Dabei wird die heutige Schicht im Kalender gelöscht!')) return; kalLoeschen(iso(new Date())); return;
   }
   render();
 };
 app.addEventListener('click',onClick);
-document.getElementById('navbar').addEventListener('click',onClick);
+document.querySelector('header').addEventListener('click',onClick);
 document.addEventListener('gesturestart',e=>e.preventDefault());
 document.addEventListener('dblclick',e=>e.preventDefault(),{passive:false});
 
@@ -650,7 +738,7 @@ app.addEventListener('change',ev=>{
     else S.settings[k]=num(el.value);
     save(); render(); toast('Gespeichert'); return;
   }
-  if(el.dataset.kal){ const k=el.dataset.kal; S.settings.kal[k]= el.type==='checkbox'?el.checked:el.value.trim(); save(); if(el.type==='checkbox') render(); toast('Gespeichert'); return; }
+  if(el.dataset.kal){ const k=el.dataset.kal; S.settings.kal[k]= el.type==='checkbox'?el.checked:el.value.trim(); save(); if(el.type==='checkbox') render(); else renderKalBar(); toast('Gespeichert'); return; }
   if(el.dataset.tplf){
     const [i,f]=el.dataset.tplf.split(':'); S.settings.schichten[+i][f]= f==='pause'?(parseInt(el.value)||0):el.value; save(); return;
   }
@@ -677,15 +765,15 @@ sheet.addEventListener('click',ev=>{
     case 'rsave': {
       readRange(); const tage=rangeDays();
       if(!tage.length) return toast('Keine Tage im Zeitraum');
-      const neu=[];
-      for(const s of tage){ if(S.days[s]?.typ!==rng.typ) neu.push(s); S.days[s]={typ:rng.typ}; }
+      const ch=[];
+      for(const s of tage){ if(setDay(s,{typ:rng.typ})) ch.push(s); }
       if(rng.ohneFt){ let a=parse(rng.von), b=parse(rng.bis); if(b<a) [a,b]=[b,a];
-        for(let d=a; d<=b; d=addDays(d,1)){ const s=iso(d); if(feiertag(s) && !S.days[s]) S.days[s]={typ:'feiertag'}; } }
-      const typ=rng.typ; rng=null;
-      save(); closeSheet(); render(); toast(`${tage.length} Tage eingetragen`);
-      kalSync(typ, neu); return;
+        for(let d=a; d<=b; d=addDays(d,1)){ const s=iso(d); if(feiertag(s) && !S.days[s] && setDay(s,{typ:'feiertag'})) ch.push(s); } }
+      rng=null;
+      save(); closeSheet(); commitKal(ch); render(); toast(`${tage.length} Tage eingetragen`);
+      return;
     }
-    case 'del': delete S.days[edit._s]; save(); closeSheet(); render(); return toast('Gelöscht');
+    case 'del': { const s=edit._s; const ch=setDay(s,null); save(); closeSheet(); if(ch) commitKal([s]); render(); return toast('Gelöscht'); }
     case 'save': {
       readSheet(); const s=edit._s, e={typ:edit.typ};
       if(edit.typ==='arbeit'){
@@ -694,9 +782,7 @@ sheet.addEventListener('click',ev=>{
         if(edit.zuschlag) e.zuschlag=edit.zuschlag; }
       if(edit.std!=null && edit.typ!=='frei') e.std=edit.std;
       if(edit.notiz) e.notiz=edit.notiz;
-      const alt=S.days[s]?.typ;
-      S.days[s]=e; save(); closeSheet(); render(); toast('Gespeichert');
-      if(alt!==e.typ) kalSync(e.typ,[s]);
+      const ch=setDay(s,e); save(); closeSheet(); if(ch) commitKal([s]); render(); toast('Gespeichert');
       return;
     }
   }

@@ -197,10 +197,15 @@ details summary{cursor:pointer;padding:6px 0}
 .log{padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
 .log:last-child{border-bottom:0}
 .log .k{color:var(--krank);font-weight:700}
+.aend{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 40px;gap:8px;align-items:center;margin-top:8px}
+.aend .btn{height:44px;padding:0}
+.helpbtn{font-weight:800;font-size:19px}
+.info ol{margin:4px 0 8px;padding-left:20px}
+.info ol li{margin:4px 0}
 </style>
 </head>
 <body>
-<header class="hdr"><div class="top"><div><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></div><div style="display:flex;gap:8px;align-items:center"><button class="todaybtn" id="todayBtn" hidden>Heute</button><button class="iconbtn" id="setBtn" aria-label="Einstellungen">⚙️</button></div></div><div id="navbar"></div><div id="kalbar"></div></header>
+<header class="hdr"><div class="top"><div><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></div><div style="display:flex;gap:8px;align-items:center"><button class="todaybtn" id="todayBtn" hidden>Heute</button><button class="iconbtn" id="backBtn" aria-label="Schließen" hidden>✕</button><button class="iconbtn helpbtn" id="helpBtn" aria-label="Hilfe">?</button><button class="iconbtn" id="setBtn" aria-label="Einstellungen">⚙️</button></div></div><div id="navbar"></div><div id="kalbar"></div></header>
 <main id="app"></main>
 
 <nav class="tabbar">
@@ -219,7 +224,7 @@ details summary{cursor:pointer;padding:6px 0}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.10';
+const APP_VERSION = 'v2.12';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -263,13 +268,14 @@ function load(){
   { const alt=(S.settings.rente)||{}; S.settings.rente=Object.assign(structuredClone(DEFAULT.settings.rente), alt); S.settings.rente.de=Object.assign({}, DEFAULT.settings.rente.de, alt.de||{}); }
   if(!altKal.v){ const k=S.settings.kal; k.v=2; k.typen=[...DEFAULT.settings.kal.typen]; delete k.urlaubAn; delete k.urlaubName; }
   S.settings.steuer = Object.assign(structuredClone(DEFAULT.settings.steuer), S.settings.steuer||{});
-  S.days = S.days||{}; S.monate = S.monate||{}; S.kalQ = S.kalQ||[]; S.steuer = S.steuer||{}; S.log = S.log||[]; S.erinn = S.erinn||{};
+  S.days = S.days||{}; S.monate = S.monate||{}; S.kalQ = S.kalQ||[]; S.steuer = S.steuer||{}; S.log = S.log||[]; S.erinn = S.erinn||{}; if(!S.wcStart) S.wcStart=iso(new Date());
 }
 /* UI-Zustand (aufgeklappte Bereiche) – nur Komfort */
 let UI={}; try{ UI=JSON.parse(localStorage.getItem('zeiterfassung-ui'))||{}; }catch(e){ UI={}; }
 function uiSave(){ try{ localStorage.setItem('zeiterfassung-ui',JSON.stringify(UI)); }catch(e){} }
-function sec(id,title,body,badge){
-  return `<div class="card coll ${UI[id]?'open':''}" data-sec="${id}"><button class="coll-h" data-coll="${id}"><h2>${title}${badge?`<span class="badge">${badge}</span>`:''}</h2><span class="chev">›</span></button><div class="coll-b">${body}</div></div>`;
+function sec(id,title,body,badge,offen){
+  const auf = UI[id]===undefined ? !!offen : !!UI[id];
+  return `<div class="card coll ${auf?'open':''}" data-sec="${id}"><button class="coll-h" data-coll="${id}"><h2>${title}${badge?`<span class="badge">${badge}</span>`:''}</h2><span class="chev">›</span></button><div class="coll-b">${body}</div></div>`;
 }
 /* Tag setzen/löschen, meldet ob sich etwas geändert hat */
 function setDay(s,e){
@@ -522,7 +528,7 @@ function renderMonat(){
       <tfoot><tr><td>Gesamt</td><td>${eur(br+sb)}</td><td>${eur(ne+sn)}</td></tr></tfoot></table>
       <div class="hint">Std.-Lohn ohne Sonderzahlung, damit die Monate vergleichbar bleiben.</div>`:''}
     <div class="muted" style="margin-top:8px">Feiertage: ${r.feiertag} · Freie Tage: ${r.frei}${r.abbau?` · Überstunden-Abbau: ${r.abbau} Tag(e)`:''}${r.zuschlag?` · Zuschlagsstunden: ${fmt(r.zuschlag)}`:''}</div>
-    <div class="row" style="margin-top:8px"><button class="btn small" data-act="copyprev">Lohn vom Vormonat übernehmen</button></div>
+    <div class="row" style="margin-top:8px"><button class="btn small" data-act="copyprev">Lohn vom Vormonat übernehmen</button>${m<11?`<button class="btn small" data-act="copynext">Auf Folgemonate ${y} übertragen</button>`:''}</div>
   </div>
   <div class="card"><h2>Einträge</h2>${list?`<table><tbody>${list}</tbody></table>`:'<div class="muted">Noch keine Einträge.</div>'}</div>`;
 }
@@ -812,6 +818,8 @@ function renderRente(){
       ${f('frei','Abschlagsfrei ab (bei 45 Beitragsjahren)','date','Leer lassen, wenn nicht zutreffend. Bitte bei der Rentenversicherung prüfen lassen.')}
       ${f('versBeginn','Beginn Versicherung (für den Fortschrittsbalken)','date')}`)
   + sec('r_werte','Rechengrößen',`
+      <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-rauto ${r.auto!==false?'checked':''}> 🔄 Automatisch aktualisieren${WERTE?` (Stand ${de2(WERTE.stand)})`:''}</label>
+      <div class="hint">Rentenwert, Durchschnittsentgelte und KV-Zusatzbeitrag kommen dann automatisch. Ein eigener Wert schaltet die Automatik aus.</div>
       ${f('rentenwert','Aktueller Rentenwert (€)','text','Ab 01.07.2026: 42,52 €. Steigt jedes Jahr zum 1. Juli.')}
       <div class="grid2">${jahre.map(y=>`<div><label class="f">Durchschnittsentgelt ${y}</label><input inputmode="decimal" data-rde="${y}" value="${r.de[y]??''}"></div>`).join('')}</div>
       <div class="hint">Jahresbrutto ÷ Durchschnittsentgelt = Entgeltpunkte des Jahres.</div>
@@ -830,8 +838,9 @@ const TARIF={
   2025:{g:12096,z2:17443,a:932.30,z3:68480,b:176.64,c:1015.13,d:10911.92,e:19246.67,w:[13785,34240,222260],bbgR:96600,bbgK:66150,mini:556},
   2026:{g:12348,z2:17799,a:914.51,z3:69878,b:173.10,c:1034.87,d:11135.63,e:19470.38,w:[14071,34939,222260],bbgR:101400,bbgK:69750,mini:603}
 };
-const tarifJahr = y => y<2024 ? 2024 : y>2026 ? 2026 : y;
-const tarifP = y => y>2026 ? {...TARIF[2026], mini:633} : TARIF[tarifJahr(y)];
+const tJahre = () => Object.keys(TARIF).map(Number).sort((a,b)=>a-b);
+const tarifJahr = y => { const j=tJahre(); return y<=j[0] ? j[0] : j.filter(v=>v<=y).pop(); };
+const tarifP = y => { const tj=tarifJahr(y), t=TARIF[tj]; return y>tj ? {...t, mini:MINIJOB[y]||t.mini} : t; };
 function estT(x,P){
   x=Math.floor(x); if(x<=P.g) return 0;
   if(x<=P.z2){ const y=(x-P.g)/1e4; return Math.floor((P.a*y+1400)*y); }
@@ -858,7 +867,9 @@ const midiBE = (m,P) => (m>P.mini && m<=2000) ? 2000/(2000-P.mini)*(m-P.mini) : 
 const numDE = v => { let s=String(v??'').trim().replace(/\s|€/g,''); if(s.includes(',')) s=s.replace(/\./g,'').replace(',','.'); else if(/^\d{1,3}(\.\d{3})+$/.test(s)) s=s.replace(/\./g,''); const n=parseFloat(s); return isFinite(n)?n:0; };
 const leer = v => v===''||v==null;
 const e0 = n => Math.round(n).toLocaleString('de-DE')+' €';
-const ST_DEF = {ich:{stkl:4, lohn:'', sonder:'', lst:'', wk:''}, p:{stkl:4, monat:'', sonder:'', midi:false, lst:'', wk:''}, vz:'', hw:'', abz:''};
+const ST_DEF = {ich:{stkl:4, lohn:'', sonder:'', lst:'', wk:'', aend:[]}, p:{stkl:4, monat:'', sonder:'', midi:false, lst:'', wk:'', aend:[]}, vz:'', hw:'', abz:''};
+/* Monatsbrutto in Monat m (0–11): letzte Gehaltsänderung „ab Monat“ bis dahin, sonst Basiswert */
+const aendVal = (arr,m,basis) => { let v=basis; for(const a of (arr||[]).slice().sort((x,y)=>x.ab-y.ab)) if(+a.ab<=m+1 && !leer(a.b)) v=+a.b; return v; };
 const stFill = o => ({...structuredClone(ST_DEF), ...o, ich:{...ST_DEF.ich, ...(o.ich||{})}, p:{...ST_DEF.p, ...(o.p||{})}});
 /* Werte eines Jahres – ohne eigene Werte werden die des letzten Jahres davor angezeigt */
 function stY(y,create){
@@ -866,29 +877,31 @@ function stY(y,create){
   if(S.steuer[y]) return {d:(S.steuer[y]=stFill(S.steuer[y])), von:null};
   const prev=Object.keys(S.steuer).map(Number).filter(v=>v<y).sort((a,b)=>b-a)[0];
   const d = prev ? stFill(structuredClone(S.steuer[prev])) : stFill({});
-  if(prev){ d.ich.lst=''; d.p.lst=''; }
+  if(prev){ d.ich.lst=''; d.p.lst=''; d.p.monat = aendVal(d.p.aend,11,leer(d.p.monat)?0:+d.p.monat)||''; d.p.aend=[]; d.ich.aend=[]; }
   if(create){ S.steuer[y]=d; return {d, von:null}; }
   return {d, von:prev||null};
 }
 /* Dein Lohn aus den Monaten der App; fehlende Monate am Ende des Jahres werden hochgerechnet */
-function lohnApp(y){
+function lohnApp(y,aend){
   const nowY=new Date().getFullYear(); let lohn=0, sonder=0, last=-1, hoch=0; const b=[];
   for(let m=0;m<12;m++){ const g=S.monate[`${y}-${pad(m+1)}`]||{}; b[m]=numDE(g.brutto); sonder+=numDE(g.sonderBrutto); if(b[m]>0){ lohn+=b[m]; last=m; } }
-  if(last>=0 && y>=nowY) for(let m=last+1;m<12;m++){ lohn+=b[last]; hoch++; }
+  // noch nicht eingetragene Monate: Gehaltsänderung „ab Monat“, sonst letzter Monat hochgerechnet
+  if(y>=nowY) for(let m=last+1;m<12;m++){ const v=aendVal(aend,m,last>=0?b[last]:0); if(v>0){ lohn+=v; hoch++; } }
   return {lohn, sonder, hoch};
 }
 function steuerCalc(y){
   const {d,von}=stY(y), G=S.settings.steuer, P=tarifP(y), verh=!!G.verh, n=v=>leer(v)?0:(+v||0);
-  const app=lohnApp(y);
+  const app=lohnApp(y,d.ich.aend);
   const iLohn = leer(d.ich.lohn) ? app.lohn : n(d.ich.lohn), iSon = leer(d.ich.sonder) ? app.sonder : n(d.ich.sonder), iB=iLohn+iSon;
-  const pB = verh ? n(d.p.monat)*12 + n(d.p.sonder) : 0;
+  const pM = Array.from({length:12},(_,m)=>aendVal(d.p.aend,m,n(d.p.monat)));
+  const pB = verh ? pM.reduce((a,v)=>a+v,0) + n(d.p.sonder) : 0;
   const klI = verh ? +d.ich.stkl : 1, klP = verh ? +d.p.stkl : 0;
   const lIc=lstJahr(iB,klI,P,G), lPc=lstJahr(pB,klP,P,G);
   const lI = leer(d.ich.lst) ? lIc : n(d.ich.lst), lP = verh ? (leer(d.p.lst) ? lPc : n(d.p.lst)) : 0;
   const eI=Math.max(0, iB-Math.max(1230,n(d.ich.wk))), eP=verh ? Math.max(0, pB-Math.max(1230,n(d.p.wk))) : 0;
   const kvS=0.073+G.kvZ/200, pvS=G.pv/100;
   const sv = be => ({rv:0.093*Math.min(be,P.bbgR), kv:kvS*Math.min(be,P.bbgK), pv:pvS*Math.min(be,P.bbgK)});
-  const sI=sv(iB), sP=sv(verh ? (d.p.midi ? midiBE(n(d.p.monat),P)*12 + n(d.p.sonder) : pB) : 0);
+  const sI=sv(iB), sP=sv(verh ? (d.p.midi ? pM.reduce((a,v)=>a+midiBE(v,P),0) + n(d.p.sonder) : pB) : 0);
   const vors = sI.rv+sP.rv + 0.96*(sI.kv+sP.kv) + sI.pv+sP.pv;   // Altersvorsorge voll, KV ohne Krankengeld-Anteil (−4 %)
   const sa = Math.max(verh?72:36, n(d.abz));
   const zve = Math.max(0, Math.floor(eI+eP-vors-sa));
@@ -907,6 +920,7 @@ function renderSteuer(){
   const fv = v => leer(v) ? '' : String(v).replace('.',',');
   const sm = t => `<div class="muted" style="font-size:11px">${t}</div>`;
   const inp = (path,label,ph,hint) => { const [a,b]=path.split('.'); const v=b?d[a][b]:d[a]; return `<label class="f">${label}</label><input inputmode="decimal" data-st="${path}" value="${fv(v)}" placeholder="${ph}">${hint?`<div class="hint">${hint}</div>`:''}`; };
+  const aendUI = w => { const arr=d[w].aend||[]; return `${arr.map((a,i)=>`<div class="aend"><select data-aend="${w}:${i}:ab">${MON.map((mn,j)=>`<option value="${j+1}" ${+a.ab===j+1?'selected':''}>ab ${mn}</option>`).join('')}</select><input inputmode="decimal" data-aend="${w}:${i}:b" value="${fv(a.b)}" placeholder="neues Brutto €"><button class="btn danger" data-aenddel="${w}:${i}" aria-label="Entfernen">✕</button></div>`).join('')}<button class="btn small" data-aendadd="${w}" style="margin-top:4px">+ Gehaltsänderung ab Monat</button>`; };
   const kl = (w,cur) => `<label class="f">Steuerklasse</label><div class="seg">${[3,4,5].map(k=>`<button data-stkl="${w}:${k}" class="${+cur===k?'on':''}">${k}</button>`).join('')}</div>`;
   const has = c.iB || c.pB;
   let top = c.von ? `<div class="hint" style="text-align:center;margin-top:8px">Werte aus ${c.von} übernommen – sobald du etwas änderst, gelten sie für ${y}.</div>` : '';
@@ -918,7 +932,7 @@ function renderSteuer(){
       <div style="font-weight:700">${ok?'passt – keine Nachzahlung 👍':r>0?'Nachzahlung':'Erstattung'}</div>
       ${ok&&r?`<div class="muted">rechnerisch ${e0(Math.abs(r))} ${r>0?'Nachzahlung':'Erstattung'}</div>`:''}
     </div>
-    <div class="card"><h2>So rechnet die App</h2><table class="calc2"><tbody>
+    ${sec('st_calc','So rechnet die App',`<table class="calc2"><tbody>
       <tr><td>Bruttolohn du${sm(`${leer(d.ich.lohn)?`Lohn aus der App${c.app.hoch?`, ${c.app.hoch} Monat${c.app.hoch>1?'e':''} hochgerechnet`:''}`:'Lohn eingetragen'} · Sonderz. ${e0(c.iSon)}`)}</td><td>${e0(c.iB)}</td></tr>
       ${c.verh?`<tr><td>Bruttolohn ${pn}${d.p.midi?sm('Midijob'):''}</td><td>${e0(c.pB)}</td></tr>`:''}
       <tr><td>− Werbungskosten</td><td>−${e0(c.wk)}</td></tr>
@@ -932,15 +946,15 @@ function renderSteuer(){
       ${c.verh?`<tr><td>− Lohnsteuer ${pn} (Kl. ${c.klP})${sm(leer(d.p.lst)?'berechnet':'eingetragen')}</td><td>−${e0(c.lP)}</td></tr>`:''}
       ${c.vz?`<tr><td>− Vorauszahlungen</td><td>−${e0(c.vz)}</td></tr>`:''}
       <tr class="sum"><td>${r>=0?'Nachzahlung':'Erstattung'}</td><td class="${ok?'':r>0?'neg':'pos'}">${e0(Math.abs(r))}</td></tr>
-    </tbody></table></div>`;
+    </tbody></table>`,'',true)}`;
     if(c.vgl){
       const akt=c.vgl.find(v=>v.akt), luecke=akt?akt.erg:0;
-      top += `<div class="card"><h2>Steuerklassen im Vergleich</h2><table><thead><tr><th>Klassen</th><th>Lohnsteuer</th><th>Ergebnis*</th></tr></thead><tbody>
+      top += sec('st_vgl','Steuerklassen im Vergleich',`<table><thead><tr><th>Klassen</th><th>Lohnsteuer</th><th>Ergebnis*</th></tr></thead><tbody>
         ${c.vgl.map(v=>`<tr${v.akt?' style="font-weight:700"':''}><td>${v.k}${v.akt?' (jetzt)':''}</td><td>${e0(v.l)}</td><td class="${Math.abs(v.erg)<25?'':v.erg>0?'neg':'pos'}">${Math.abs(v.erg)<25?'±0 €':`${e0(Math.abs(v.erg))} ${v.erg>0?'Nachz.':'Erst.'}`}</td></tr>`).join('')}
         <tr><td>4/4 mit Faktor</td><td>≈ ${e0(c.est0)}</td><td>≈ ±0 €</td></tr>
       </tbody></table>
       <div class="hint">* ohne Vorauszahlungen. Die Steuer ist bei jeder Kombination gleich – es ändert sich nur, wie viel schon monatlich vom Lohn abgeht.</div>
-      ${akt&&luecke>=25?`<div class="hint">Lücke bei ${akt.k}: ≈ ${e0(luecke)} im Jahr – das entspricht Vorauszahlungen von ≈ ${e0(luecke/4)} pro Quartal.</div>`:''}</div>`;
+      ${akt&&luecke>=25?`<div class="hint">Lücke bei ${akt.k}: ≈ ${e0(luecke)} im Jahr – das entspricht Vorauszahlungen von ≈ ${e0(luecke/4)} pro Quartal.</div>`:''}`,'',true);
     }
   }
   app.innerHTML = top
@@ -951,6 +965,7 @@ function renderSteuer(){
         <div>${inp('ich.sonder','Sonderzahlungen (€)', Math.round(c.app.sonder).toLocaleString('de-DE'))}</div>
       </div>
       <div class="hint">Leer = aus der App: Lohn ${e0(c.app.lohn)}${c.app.hoch?` (davon ${c.app.hoch} Monat${c.app.hoch>1?'e':''} hochgerechnet)`:''}, Sonderzahlungen ${e0(c.app.sonder)}. Ein Eintrag ersetzt den App-Wert.</div>
+      <label class="f">Gehaltsänderung für noch nicht eingetragene Monate</label>${aendUI('ich')}
       <div class="grid2">
         <div>${inp('ich.lst','Lohnsteuer im Jahr (€)', Math.round(c.lIc).toLocaleString('de-DE'))}</div>
         <div>${inp('ich.wk','Werbungskosten (€)','1.230')}</div>
@@ -959,9 +974,10 @@ function renderSteuer(){
   + (c.verh ? sec('st_p', `${pn} ${y}`, `
       ${kl('p',d.p.stkl)}
       <div class="grid2">
-        <div>${inp('p.monat','Monatsbrutto (€)','0')}</div>
+        <div>${inp('p.monat','Monatsbrutto ab Januar (€)','0')}</div>
         <div>${inp('p.sonder','Sonderzahlungen/Jahr (€)','0')}</div>
       </div>
+      ${aendUI('p')}
       <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-st="p.midi" ${d.p.midi?'checked':''}> Midijob (Übergangsbereich bis 2.000 €)</label>
       <div class="grid2">
         <div>${inp('p.lst','Lohnsteuer im Jahr (€)', Math.round(c.lPc).toLocaleString('de-DE'))}</div>
@@ -979,7 +995,8 @@ function renderSteuer(){
         <div><label class="f">KV-Zusatzbeitrag (%)</label><input inputmode="decimal" data-stg="kvZ" value="${fv(G.kvZ)}"></div>
         <div><label class="f">Pflege Arbeitnehmer (%)</label><input inputmode="decimal" data-stg="pv" value="${fv(G.pv)}"></div>
       </div>
-      <div class="hint">Zusatzbeitrag der Krankenkasse steht auf der Abrechnung. Pflege: 1,8 % mit Kindern, 2,4 % kinderlos.</div>`)
+      <div class="hint">Zusatzbeitrag der Krankenkasse steht auf der Abrechnung. Pflege: 1,8 % mit Kindern, 2,4 % kinderlos.</div>
+      <div class="hint">🔄 Steuertarife ${tJahre()[0]}–${tJahre().slice(-1)[0]}${WERTE?` · Stand ${de2(WERTE.stand)}`:''} – werden automatisch aktualisiert.</div>`)
   + `<div class="hint" style="margin:6px 4px 14px">Grobe Schätzung ohne Gewähr. Nicht berücksichtigt: Kirchensteuer, Solidaritätszuschlag, außergewöhnliche Belastungen und andere Einkünfte.</div>`;
 }
 
@@ -1062,10 +1079,10 @@ function renderAusw(){
     <div class="stat"><div class="v">${c.abbau}</div><div class="l">Ü-Abbau</div></div>
     <div class="stat"><div class="v">${c.sonder}</div><div class="l">SU</div></div>
   </div>
-  <div class="card"><h2>🏝️ Urlaub ${y}</h2>
+  ${sec('a_url',`🏝️ Urlaub ${y}`,`
     <div class="muted" style="margin-bottom:6px">${c.urlaub} Tage eingetragen${plan.urlaub?` (davon ${plan.urlaub} geplant)`:''}${ans?` · Anspruch ${ans} · <b style="color:var(--text)">Rest ${ans-c.urlaub}</b>`:''}</div>
-    ${blockListe(y,'urlaub')}</div>
-  <div class="card"><h2>⏱️ Überstunden ${y}</h2>
+    ${blockListe(y,'urlaub')}`, `${c.urlaub}${ans?'/'+ans:''} Tage`, true)}
+  ${sec('a_ue',`⏱️ Überstunden ${y}`,`
     <table><tbody>
       <tr><td>Stand 1. Januar</td><td>${fmtS(kStart)} Std.</td></tr>
       ${y===nowY?`<tr><td>Stand heute</td><td class="${kJetzt>=0?'pos':'neg'}"><b>${fmtS(kJetzt)} Std.</b></td></tr>`:''}
@@ -1073,14 +1090,14 @@ function renderAusw(){
       <tr><td>Überstunden-Abbau</td><td>${c.abbau} Tag${c.abbau===1?'':'e'} (≈ ${fmt(c.abbau*sT)} Std.)</td></tr>
     </tbody></table>
     ${c.abbau?`<div style="margin-top:8px">${blockListe(y,'abbau')}</div>`:''}
-    ${monRows?`<h2 style="margin-top:14px">Je Monat</h2><table><tbody>${monRows}</tbody></table>`:''}</div>
+    ${monRows?`<h2 style="margin-top:14px">Je Monat</h2><table><tbody>${monRows}</tbody></table>`:''}`, `${fmtS(y===nowY?kJetzt:kEnde)} Std.`, true)}
   ${sec('a_su',`⭐ Sonderurlaub ${y}`, blockListe(y,'sonder'), c.sonder?c.sonder+' Tage':'')}
   ${sec('a_frei',`😌 Freie Tage ${y}`, freiHTML, c.frei+' Tage')}
   ${sec('a_krank',`🤒 Krank ${y}`, blockListe(y,'krank'), c.krank?c.krank+' Tage':'')}
   ${sec('a_sch',`👷 Schichten ${y}`, `<div class="stats3">${schList||'<div class="muted">Keine Schichten.</div>'}</div>
      <div class="muted" style="margin-top:8px">${c.arbeit} Arbeitstage · davon ${sa} Samstage${sofe?` · ${sofe} an Sonn-/Feiertagen`:''}</div>`, c.arbeit+' Tage')}
   ${sec('a_log',`✎ Änderungen ${y}`, logs.length? logs.map(x=>logZeile(x,true)).join('') : '<div class="muted">Noch keine Änderungen. Ab jetzt wird jede Änderung an einem schon eingetragenen Tag mit Datum und Uhrzeit festgehalten.</div>', logs.length?String(logs.length):'')}
-  <div class="hint" style="margin:6px 4px 14px">Tipp: Antippen eines Zeitraums öffnet die passende Woche.</div>`;
+  `;
 }
 
 /* ---------- Rente beantragen: Infos, Fahrplan, Erinnerungen ---------- */
@@ -1143,6 +1160,59 @@ function fahrplanCard(){
     <div class="hint">Die App erinnert dich mit einem Hinweis, sobald ein Schritt fällig ist. Antippen zeigt die Infos.</div></div>`;
 }
 
+
+/* ---------- Erinnerung: Rechenwerte prüfen (15. Januar + 15. Mai) ---------- */
+const WC=[{m:1,d:15,t:'Januar',txt:'Zum Jahresbeginn ändern sich Steuertarif, Beitragsgrenzen, Minijob-Grenze und die Durchschnittsentgelte.'},
+          {m:5,d:15,t:'Mai',txt:'Bis zum Sommer steht der neue Rentenwert fest – er gilt ab 1. Juli.'}];
+function werteAktuell(){
+  return WERTE || {stand:iso(new Date()), steuer:TARIF, minijob:MINIJOB, rente:{rentenwert:S.settings.rente.rentenwert, de:S.settings.rente.de, kvZusatz:S.settings.rente.kvZusatz}};
+}
+function wertePrompt(){
+  const d=new Date(), y=d.getFullYear(), m=d.getMonth()+1;
+  const fokus = m<=3 ? `Schwerpunkt jetzt (Jahresbeginn ${y}): Einkommensteuertarif ${y}, Lohnsteuer-Programmablaufplan ${y} (W-Werte Steuerklasse V), Beitragsbemessungsgrenzen ${y}, Minijob-Grenze ${y}, Durchschnittsentgelt ${y} (vorläufig) und ${y-2} (endgültig), durchschnittlicher KV-Zusatzbeitrag ${y}.`
+             : m<=8 ? `Schwerpunkt jetzt: neuer Rentenwert ab 01.07.${y}.`
+             : `Schwerpunkt jetzt: Ist der Einkommensteuertarif ${y+1} schon beschlossen? Gibt es die Rechengrößen der Sozialversicherung ${y+1} schon?`;
+  return `Bitte prüfe die aktuellen deutschen Rechenwerte für meine Zeiterfassungs-App und gib mir eine aktualisierte Datei werte.json zurück – vollständig, im exakt gleichen Format wie unten, als EINEN Codeblock, damit ich ihn kopieren kann.
+
+Heute ist der ${deD(d)}. ${fokus}
+
+Bitte mit Websuche bei offiziellen Quellen prüfen (Gesetze im Internet, Bundesfinanzministerium, Deutsche Rentenversicherung, Bundesregierung):
+1. Einkommensteuertarif § 32a EStG je Jahr: Grundfreibetrag "g", Zonengrenzen "z2" und "z3", Formelwerte "a", "b", "c", "d", "e" (Zone 2: (a·y+1400)·y, Zone 3: (b·z+2397)·z+c, Zone 4: 0,42·x−d, Zone 5: 0,45·x−e).
+2. Lohnsteuer Steuerklasse V: W1STKL5, W2STKL5, W3STKL5 aus dem Programmablaufplan des Jahres → "w".
+3. Beitragsbemessungsgrenze Rentenversicherung "bbgR" und Kranken-/Pflegeversicherung "bbgK" (jährlich).
+4. Minijob-Grenze pro Monat "mini" (künftige Jahre unter "minijob").
+5. Aktueller Rentenwert "rentenwert" und ab wann "rentenwertAb".
+6. Durchschnittsentgelt "de" je Jahr; endgültige Jahre in "deEndgueltig".
+7. Durchschnittlicher KV-Zusatzbeitrag in Prozent "kvZusatz".
+
+Regeln: Nur offiziell beschlossene Werte, keine Entwürfe. Vorhandene Jahre nicht löschen. "stand" auf das heutige Datum (JJJJ-MM-TT) setzen und unter "neu" kurz auflisten, was sich geändert hat. Wenn sich nichts geändert hat, sag mir das einfach – dann muss ich nichts hochladen. Falls du keine Websuche hast, sag es bitte, statt Werte zu raten.
+
+Aktuelle werte.json:
+${JSON.stringify(werteAktuell(),null,1)}`;
+}
+function copyText(t){
+  const ok=()=>toast('Text kopiert ✓');
+  const alt=()=>{ const ta=document.createElement('textarea'); ta.value=t; ta.setAttribute('readonly',''); ta.style.position='fixed'; ta.style.top='0'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); ta.setSelectionRange(0,t.length); try{ document.execCommand('copy'); ok(); }catch(e){ toast('Kopieren nicht möglich'); } ta.remove(); };
+  if(navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(ok,alt); else alt();
+}
+const WC_ANLEITUNG=`<p><b>So geht's:</b></p><ol>
+  <li>Unten „Text für Claude kopieren“ tippen.</li>
+  <li>Einen neuen Chat mit Claude öffnen, einfügen und senden.</li>
+  <li>In GitHub die Datei <b>werte.json</b> öffnen → ✏️ Bearbeiten → alles markieren, die Antwort von Claude einfügen → „Commit changes“.</li>
+  <li>Fertig – beim nächsten Öffnen zeigt die App „📢 Neue Rechenwerte“.</li></ol>
+  <p class="muted">Hat sich nichts geändert, sagt Claude dir das – dann einfach „Erledigt“.</p>
+  <button class="btn" data-pop="copy" style="width:100%;margin-top:4px">📋 Text für Claude kopieren</button>`;
+function wcItems(){
+  const heute=iso(new Date()), y=new Date().getFullYear(), start=S.wcStart||heute, out=[];
+  for(const w of WC){
+    const dt=`${y}-${pad(w.m)}-${pad(w.d)}`;
+    if(dt>heute || dt<start) continue;
+    const schon = w.m===1 ? `${y-1}-12-01` : `${y}-${pad(w.m)}-01`;
+    if(WERTE && WERTE.stand>=schon) continue;
+    out.push({id:`wc-${y}-${w.m}`, ic:'🔄', t:`Rechenwerte prüfen (${w.t} ${y})`, due:dt, b:`<p>${w.txt}</p>${WC_ANLEITUNG}`});
+  }
+  return out;
+}
 /* ---------- Popup-Erinnerungen ---------- */
 let popItem=null;
 function backupItem(){ const l=S.lastBackup?new Date(S.lastBackup):null;
@@ -1150,6 +1220,8 @@ function backupItem(){ const l=S.lastBackup?new Date(S.lastBackup):null;
 function faellig(){
   const heute=iso(new Date()), E=S.erinn||{}, out=[];
   for(const s of fahrplan()){ const z=E[s.id]||{}; if(!z.done && s.due<=heute && !(z.snooze && z.snooze>heute)) out.push(s); }
+  if(WERTE && S.werteSeen && WERTE.stand>S.werteSeen) out.unshift({id:'werte', ic:'📢', t:'Neue Rechenwerte', info:true, b:`<p>Stand <b>${de2(WERTE.stand)}</b>:</p><ul>${(WERTE.neu||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul><p class="muted">Steuer-Check und Rentenrechner rechnen ab sofort damit.</p>`});
+  for(const w of wcItems()){ const z=E[w.id]||{}; if(!z.done && !(z.snooze && z.snooze>heute)) out.push(w); }
   const bt=+S.settings.backupTage||0, z=E.backup||{};
   if(bt>0 && Object.keys(S.days).length && !(z.snooze && z.snooze>heute)){ const l=S.lastBackup||0; if(!l || (Date.now()-l)/864e5>=bt) out.push(backupItem()); }
   return out;
@@ -1158,12 +1230,12 @@ function showPop(it,manuell){
   popItem={...it, manuell};
   const pop=document.getElementById('pop'), R=renteDaten();
   pop.innerHTML=`<div class="pop-h"><span class="ic">${it.ic}</span><b>${it.t}</b></div>
-    ${it.due?`<div class="muted" style="margin-top:2px">${it.due<=iso(new Date())?'Fällig seit':'Ab'} ${de2(it.due)}${R?` · Rentenbeginn ${de2(R.b)}`:''}</div>`:''}
+    ${it.due?`<div class="muted" style="margin-top:2px">${it.due<=iso(new Date())?'Fällig seit':'Ab'} ${de2(it.due)}${R&&!it.id.startsWith('wc-')?` · Rentenbeginn ${de2(R.b)}`:''}</div>`:''}
     <div class="info" style="margin-top:8px">${it.b}</div>
-    ${it.backup?'':`<details style="margin-top:6px"><summary class="muted">📞 Kontakt Rentenversicherung</summary>${KONTAKT}</details>
-    <label class="chk"><input type="checkbox" id="popDone" ${(S.erinn||{})[it.id]?.done?'checked':''}> Erledigt</label>`}
+    ${it.backup||it.info||it.id.startsWith('wc-')?'':`<details style="margin-top:6px"><summary class="muted">📞 Kontakt Rentenversicherung</summary>${KONTAKT}</details>`}
+    ${it.backup||it.info?'':`<label class="chk"><input type="checkbox" id="popDone" ${(S.erinn||{})[it.id]?.done?'checked':''}> Erledigt</label>`}
     <div class="row" style="justify-content:flex-end;margin-top:${it.backup?'12px':'0'}">
-      ${manuell?'':`<button class="btn" data-pop="later">In 7 Tagen erinnern</button>`}
+      ${manuell||it.info?'':`<button class="btn" data-pop="later">In 7 Tagen erinnern</button>`}
       ${it.backup?`<button class="btn primary" data-pop="backup">Jetzt sichern</button>`:`<button class="btn primary" data-pop="close">${manuell?'Schließen':'OK'}</button>`}
     </div>`;
   pop.classList.add('open'); document.getElementById('popBg').classList.add('open');
@@ -1171,6 +1243,7 @@ function showPop(it,manuell){
 function snooze(id,tage){ S.erinn=S.erinn||{}; const z=S.erinn[id]=S.erinn[id]||{}; z.snooze=iso(addDays(new Date(),tage)); save(); }
 function closePop(){
   const it=popItem; popItem=null;
+  if(it?.id==='werte' && WERTE){ S.werteSeen=WERTE.stand; save(); }
   document.getElementById('pop').classList.remove('open'); document.getElementById('popBg').classList.remove('open');
   if(it && !it.manuell) setTimeout(checkPop,400);
 }
@@ -1180,6 +1253,83 @@ function checkPop(){
 }
 function setErledigt(id,an){ S.erinn=S.erinn||{}; const z=S.erinn[id]=S.erinn[id]||{}; if(an) z.done=iso(new Date()); else { delete z.done; delete z.snooze; } save(); }
 
+
+/* ---------- Hilfe (❓ oben rechts) ---------- */
+const SEITE={start:'Start',woche:'Woche',monat:'Monat',jahr:'Jahr',ausw:'Auswertung',steuer:'Steuer-Check',rente:'Rente',einst:'Einstellungen'};
+const HILFE={
+  start:[['Countdown','Die drei Zähler zeigen den nächsten freien Wochentag, den nächsten Urlaub (nur wenn einer eingetragen ist) und die Tage bis zur Rente.'],
+         ['Übersicht','Nach links wischen: heute, Woche, Überstundenkonto, Resturlaub und die nächsten Einträge. Eine Karte antippen öffnet den passenden Bereich.'],
+         ['Hinweise','Wird ein Schritt im Renten-Fahrplan fällig oder ist ein Backup dran, erscheint beim Öffnen der App ein Hinweisfenster.']],
+  woche:[['Tag eintragen','Einen Tag antippen, die Art wählen (Arbeit, Frei, Urlaub, Krank …) und bei Arbeit eine Schicht-Vorlage oder eigene Zeiten. Bemerkung z. B. „Baumberg“.'],
+         ['Mehrere Tage','Unten „Mehrere Tage eintragen“ aufklappen: erst die Art wählen, dann die Tage antippen, dann übernehmen. Für lange Zeiträume „Längeren Zeitraum eintragen“.'],
+         ['✎ neben dem Wochentag','Dieser Tag wurde geändert, nachdem er schon eingetragen war. Im Tag-Fenster steht unten, wann und was geändert wurde.'],
+         ['Zahlen oben','„Woche“ = Ist minus Soll dieser Woche, „Konto“ = Überstundenkonto einschließlich dieser Woche.'],
+         ['Kalender','Ist der Abgleich an, sammelt der orange Balken oben die Änderungen. „Senden“ überträgt sie mit einem Sprung an den Kurzbefehl.']],
+  monat:[['Lohn','Brutto und Netto vom Lohnzettel eintragen. Urlaubs- oder Weihnachtsgeld unter „Sonderzahlung“ mit Brutto und Netto.'],
+         ['Gehaltsänderung','Ändert sich das Gehalt zum Monatsanfang: im ersten Monat mit neuem Gehalt eintragen und „Auf Folgemonate übertragen“ tippen.'],
+         ['Wofür?','Die Bruttowerte zählen für die Rentenpunkte und den Steuer-Check.']],
+  jahr:[['Monate','Eine Zeile antippen öffnet den Monat.'],
+        ['Urlaubsanspruch','Weicht der Anspruch in einem Jahr ab (z. B. anteilig), unten eintragen.'],
+        ['Auswertung & Steuer-Check','Die Karten oben öffnen die Auswertung und den Steuer-Check für das gewählte Jahr. Zurück mit ✕ oben rechts.']],
+  ausw:[['Was steht hier?','Urlaub, Überstunden, Sonderurlaub, freie Tage, Krankheit, Schichten und alle Änderungen des Jahres. Jeder Bereich lässt sich auf- und zuklappen.'],
+        ['Antippen','Ein Zeitraum bei Urlaub, Sonderurlaub, Krank oder Ü-Abbau öffnet die passende Woche.'],
+        ['„geplant“','Grau mit „geplant“ = liegt noch in der Zukunft.'],
+        ['Änderungen','Jede Änderung an einem schon eingetragenen Tag, mit Datum, Uhrzeit und wie viele Tage vorher. „kurzfristig“ = höchstens 3 Tage vorher. Mehrere Korrekturen innerhalb von 10 Minuten zählen als eine.']],
+  steuer:[['Ergebnis','Schätzung für das Jahr: Einkommensteuer minus Lohnsteuer minus Vorauszahlungen = Nachzahlung oder Erstattung.'],
+          ['Dein Lohn','Kommt aus den Monaten der App (leer lassen). Noch nicht eingetragene Monate werden hochgerechnet – oder mit „Gehaltsänderung ab Monat“ mit neuem Betrag.'],
+          ['Partner/in','Monatsbrutto ab Januar, dazu „Gehaltsänderung ab Monat“, wenn sich das Gehalt im Jahr ändert. Midijob ankreuzen, wenn das Gehalt im Übergangsbereich bis 2.000 € liegt.'],
+          ['Lohnsteuer','Rechnet die App selbst aus. Nach Jahresende die Werte der Lohnsteuerbescheinigung eintragen, dann wird es genauer.'],
+          ['Steuerklassen','Der Vergleich zeigt, wie viel Lohnsteuer bei 3/5, 4/4 und 5/3 übers Jahr abgehen würde. Die Steuer selbst ist immer gleich.'],
+          ['Rechenwerte','Die Steuertarife lädt die App automatisch aus der Datei werte.json – neue Werte erscheinen ohne App-Update.']],
+  rente:[['Rechner','Rentenpunkte aus der Renteninformation plus dein Lohn aus der App, hochgerechnet bis zum Rentenbeginn.'],
+         ['Fahrplan','Die Schritte bis zur Rente mit Datum. Ist ein Schritt fällig, erscheint beim Öffnen der App ein Hinweis. Haken = erledigt, Schritt antippen = Infos.'],
+         ['Rente beantragen','Wann, wie, welche Formulare und Unterlagen, Kontakt zur Rentenversicherung.'],
+         ['Rechengrößen','Rentenwert, Durchschnittsentgelte und KV-Zusatzbeitrag werden automatisch aktualisiert, solange „Automatisch aktualisieren“ an ist. Ein eigener Wert schaltet die Automatik aus.']],
+  einst:[['Arbeitszeit','Wochensoll und Gutschrift pro Tag für Urlaub, Krank und Feiertag.'],
+         ['Kalender','Abgleich mit dem iPhone-Kalender über den Kurzbefehl.'],
+         ['Rechenwerte','Steuertarife und Rentenwerte kommen aus der Datei werte.json im Repo. Am 15. Januar und 15. Mai erinnert dich die App. Dann den Prüftext kopieren, in einen Claude-Chat einfügen und die Antwort in GitHub in werte.json einsetzen.'],
+         ['Daten','Die Daten liegen nur auf diesem iPhone. Regelmäßig „Backup exportieren“ und in iCloud Drive sichern – die App erinnert dich daran.']]
+};
+function openHilfe(){
+  edit=null; const h=HILFE[tab]||[];
+  document.getElementById('sheet').innerHTML=`<div class="nav" style="margin-bottom:4px"><b>❓ Hilfe · ${SEITE[tab]||''}</b><button class="iconbtn" data-act="close">✕</button></div>
+    <div class="info">${h.map(([t,x])=>`<h2 style="margin:14px 0 2px">${t}</h2><p style="margin-top:2px">${x}</p>`).join('')}</div>
+    <div class="hint" style="margin-top:16px">Zeiterfassung ${APP_VERSION}${WERTE?` · Rechenwerte Stand ${de2(WERTE.stand)}`:''}</div>`;
+  document.getElementById('sheet').classList.add('open'); document.getElementById('sheetBg').classList.add('open');
+}
+
+/* ---------- Rechenwerte automatisch (werte.json im Repo) ---------- */
+const WKEY='zeiterfassung-werte', MINIJOB={2027:633};
+let WERTE=null;
+function applyWerte(w){
+  if(!w || typeof w!=='object' || !w.stand) return false;
+  const vorher=JSON.stringify([TARIF,S.settings.rente]);
+  WERTE=w;
+  // nur vollständige und plausible Werte übernehmen – sonst bleiben die alten
+  const zw=(v,a,b)=>isFinite(+v) && +v>=a && +v<=b;
+  for(const [y,t] of Object.entries(w.steuer||{})){ const n=+y;
+    if(n>=2020 && n<=2100 && t && ['g','z2','a','z3','b','c','d','e','w','bbgR','bbgK','mini'].every(k=>t[k]!=null)
+       && zw(t.g,9000,25000) && zw(t.z2,t.g,40000) && zw(t.z3,t.z2,150000) && zw(t.a,500,1500) && zw(t.b,100,400) && zw(t.c,500,3000) && zw(t.d,5000,30000) && zw(t.e,10000,50000)
+       && Array.isArray(t.w) && t.w.length===3 && t.w.every(v=>zw(v,5000,400000)) && zw(t.bbgR,50000,250000) && zw(t.bbgK,40000,200000) && zw(t.mini,300,1500)) TARIF[n]=t; }
+  for(const [y,v] of Object.entries(w.minijob||{})) if(zw(v,300,1500)) MINIJOB[y]=+v;
+  const r=S.settings.rente;
+  if(r.auto!==false && w.rente){
+    if(zw(w.rente.rentenwert,30,90)) r.rentenwert=+w.rente.rentenwert;
+    if(w.rente.de) for(const [y,v] of Object.entries(w.rente.de)) if(zw(v,30000,120000)) r.de[y]=+v;
+    if(w.rente.kvZusatz!=null && zw(w.rente.kvZusatz,0,8)) r.kvZusatz=+w.rente.kvZusatz;
+  }
+  return vorher!==JSON.stringify([TARIF,S.settings.rente]);
+}
+function ladeWerte(){
+  fetch('werte.json',{cache:'no-store'}).then(r=>r.ok?r.json():null).then(w=>{
+    if(!w || !w.stand) return;
+    try{ localStorage.setItem(WKEY, JSON.stringify(w)); }catch(e){}
+    const geaendert=applyWerte(w);
+    if(!S.werteSeen) S.werteSeen=w.stand;          // beim ersten Mal still übernehmen
+    save(); if(geaendert) softRender();
+    setTimeout(checkPop,500);
+  }).catch(()=>{});
+}
 /* ---------- Einstellungen ---------- */
 function renderEinst(){
   const st=S.settings, k=st.kal; setNav(''); setTitle('Einstellungen', APP_VERSION);
@@ -1220,6 +1370,11 @@ function renderEinst(){
     <label class="f">… dann dieser Ort</label><input data-kal="regelOrt" value="${esc(k.regelOrt)}">
     <div class="hint">Arbeit → Termin „Edeka“ mit Zeit, Ort und Bemerkung. Urlaub → ganztägig „Urlaub“. Frei, Ü-Abbau, Krank, Feiertag → Schicht wird gelöscht. Nicht markierte Arten (z. B. Sonderurlaub) bleiben unangetastet.</div>
     <button class="btn small" data-act="kalweek" style="margin-top:10px">KW ${kw(curMon)} komplett senden</button>`, k.an?'an':'aus')
+  +sec('s_werte','🔄 Rechenwerte (Steuer & Rente)',`
+    <div class="muted">Stand ${WERTE?de2(WERTE.stand):'– (eingebaute Werte)'} · Steuertarife ${tJahre()[0]}–${tJahre().slice(-1)[0]} · Rentenwert ${eur(num(S.settings.rente.rentenwert))}</div>
+    <div class="hint">Die App lädt die Werte aus der Datei werte.json im Repo. Am 15. Januar und 15. Mai erinnert sie dich ans Prüfen.</div>
+    <button class="btn" data-act="wertecopy" style="width:100%;margin-top:10px">📋 Text zum Prüfen für Claude kopieren</button>
+    <div class="hint">Jederzeit nutzbar, z. B. wenn du von einer Gesetzesänderung hörst: Text kopieren, in einen Claude-Chat einfügen, die Antwort in GitHub in werte.json einsetzen.</div>`, WERTE?de2(WERTE.stand):'')
   +sec('s_daten','Daten',`
     <div class="row">
       <button class="btn" data-act="export">Backup exportieren</button>
@@ -1319,7 +1474,10 @@ function setTitle(t,s){
   if(tab==='monat') off = curMonth.getFullYear()!==n.getFullYear() || curMonth.getMonth()!==n.getMonth();
   if(tab==='jahr'||tab==='steuer'||tab==='ausw') off = curYear!==n.getFullYear();
   document.getElementById('todayBtn').hidden=!off;
+  document.getElementById('backBtn').hidden = !(tab==='steuer'||tab==='ausw');
 }
+document.getElementById('backBtn').addEventListener('click',()=>{ tab='jahr'; render(); scrollTo(0,0); });
+document.getElementById('helpBtn').addEventListener('click',()=>openHilfe());
 document.getElementById('setBtn').addEventListener('click',()=>{ tab = tab==='einst' ? 'start' : 'einst'; render(); scrollTo(0,0); });
 document.getElementById('todayBtn').addEventListener('click',()=>{
   const n=new Date(); curMon=monday(n); curMonth=new Date(n.getFullYear(),n.getMonth(),1); curYear=n.getFullYear(); render(); scrollTo(0,0);
@@ -1345,11 +1503,15 @@ document.querySelector('.tabbar').addEventListener('click',ev=>{const b=ev.targe
 document.getElementById('sheetBg').addEventListener('click',closeSheet);
 
 const onClick=ev=>{
-  const t=ev.target.closest('[data-act],[data-edit],[data-go],[data-coll],[data-fart],[data-fday],[data-kaltyp],[data-tpldel],[data-month],[data-stkl],[data-wk],[data-popid]'); if(!t) return;
+  const t=ev.target.closest('[data-act],[data-edit],[data-go],[data-coll],[data-fart],[data-fday],[data-kaltyp],[data-tpldel],[data-month],[data-stkl],[data-wk],[data-popid],[data-aendadd],[data-aenddel]'); if(!t) return;
   if(t.dataset.go){ tab=t.dataset.go; render(); scrollTo(0,0); return; }
-  if(t.dataset.coll){ const id=t.dataset.coll; UI[id]=!UI[id]; uiSave(); t.closest('.coll').classList.toggle('open',!!UI[id]); return; }
+  if(t.dataset.coll){ const id=t.dataset.coll, c=t.closest('.coll'), auf=!c.classList.contains('open'); UI[id]=auf; uiSave(); c.classList.toggle('open',auf); return; }
   if(t.dataset.fart){ fill.art = fill.art===t.dataset.fart?null:t.dataset.fart; return render(); }
   if(t.dataset.fday){ const s=t.dataset.fday; fill.days = fill.days.includes(s)?fill.days.filter(x=>x!==s):[...fill.days,s]; return render(); }
+  if(t.dataset.aendadd||t.dataset.aenddel){ const d=stY(curYear,true).d, y0=scrollY;
+    if(t.dataset.aendadd){ const w=t.dataset.aendadd; d[w].aend=d[w].aend||[]; const nm=curYear===new Date().getFullYear()?Math.min(12,new Date().getMonth()+2):1; d[w].aend.push({ab:nm,b:''}); }
+    else { const [w,i]=t.dataset.aenddel.split(':'); d[w].aend.splice(+i,1); }
+    save(); render(); scrollTo(0,y0); return; }
   if(t.dataset.wk){ curMon=monday(parse(t.dataset.wk)); tab='woche'; render(); scrollTo(0,0); return; }
   if(t.dataset.popid){ const it=fahrplan().find(x=>x.id===t.dataset.popid); if(it) showPop(it,true); return; }
   if(t.dataset.stkl){ const [w,k]=t.dataset.stkl.split(':'), d=stY(curYear,true).d, paar={3:5,4:4,5:3}; d[w].stkl=+k; d[w==='ich'?'p':'ich'].stkl=paar[k]; save(); const y0=scrollY; render(); scrollTo(0,y0); return; }
@@ -1385,6 +1547,12 @@ const onClick=ev=>{
     case 'mnext': curMonth=new Date(curMonth.getFullYear(),curMonth.getMonth()+1,1); break;
     case 'yprev': curYear--; break;
     case 'ynext': curYear++; break;
+    case 'copynext': {
+      const y=curMonth.getFullYear(), m=curMonth.getMonth(), g=S.monate[`${y}-${pad(m+1)}`]||{};
+      if(!g.brutto && !g.netto) return toast('Erst Brutto/Netto eintragen');
+      if(!confirm(`Brutto ${g.brutto||'–'} € und Netto ${g.netto||'–'} € für ${MON[m+1]}–Dezember ${y} übernehmen? Dort eingetragene Werte werden ersetzt, Sonderzahlungen bleiben.`)) return;
+      for(let i=m+1;i<12;i++){ const k=`${y}-${pad(i+1)}`; S.monate[k]={...(S.monate[k]||{}), brutto:g.brutto||'', netto:g.netto||''}; }
+      save(); toast(`Übertragen auf ${11-m} Monat${11-m>1?'e':''}`); break; }
     case 'copyprev': {
       const p=new Date(curMonth.getFullYear(),curMonth.getMonth()-1,1), pk=`${p.getFullYear()}-${pad(p.getMonth()+1)}`;
       if(!S.monate[pk]) return toast('Vormonat ohne Lohnangaben');
@@ -1393,6 +1561,7 @@ const onClick=ev=>{
     case 'export': S.lastBackup=Date.now(); save(); download(`zeiterfassung-backup-${iso(new Date())}.json`,JSON.stringify({app:'zeiterfassung',version:APP_VERSION,...S},null,1),'application/json'); return;
     case 'import': document.getElementById('impFile').click(); return;
     case 'csv': exportCSV(); return;
+    case 'wertecopy': copyText(wertePrompt()); return;
     case 'range': openRange(); return;
   }
   render();
@@ -1416,9 +1585,14 @@ app.addEventListener('change',ev=>{
     const k=`${curMonth.getFullYear()}-${pad(curMonth.getMonth()+1)}`;
     S.monate[k]=S.monate[k]||{}; S.monate[k][el.dataset.money]=el.value.trim(); save(); softRender(); return;
   }
+  if(el.dataset.rauto!==undefined){ const r=S.settings.rente; r.auto=el.checked; if(el.checked && WERTE) applyWerte(WERTE); save(); softRender(); toast(el.checked?'Automatik an':'Automatik aus'); return; }
+  if(el.dataset.rente && ['rentenwert','kvZusatz'].includes(el.dataset.rente)) S.settings.rente.auto=false;
+  if(el.dataset.rde) S.settings.rente.auto=false;
   if(el.dataset.rente){ const k=el.dataset.rente, v=el.value.trim(); S.settings.rente[k] = el.type==='date' ? v : (v===''?'':num(v)); save(); softRender(); toast('Gespeichert'); return; }
   if(el.dataset.rde){ const v=el.value.trim(); if(v==='') delete S.settings.rente.de[el.dataset.rde]; else S.settings.rente.de[el.dataset.rde]=num(v); save(); softRender(); toast('Gespeichert'); return; }
   if(el.dataset.erl){ setErledigt(el.dataset.erl, el.checked); toast(el.checked?'Erledigt ✓':'Wieder offen'); softRender(); return; }
+  if(el.dataset.aend){ const [w,i,f]=el.dataset.aend.split(':'), a=stY(curYear,true).d[w].aend[+i]; if(!a) return;
+    a[f] = f==='ab' ? +el.value : (el.value.trim()===''?'':numDE(el.value)); save(); softRender(); toast('Gespeichert'); return; }
   if(el.dataset.st){
     const d=stY(curYear,true).d, [a,b]=el.dataset.st.split('.'), v = el.type==='checkbox' ? el.checked : (el.value.trim()==='' ? '' : numDE(el.value));
     if(b) d[a][b]=v; else d[a]=v; save(); softRender(); toast('Gespeichert'); return;
@@ -1494,15 +1668,18 @@ sheet.addEventListener('input',()=>{ if(rng){ readRange(); const c=document.getE
 sheet.addEventListener('change',()=>sheet.dispatchEvent(new Event('input')));
 
 /* ---------- Start ---------- */
-load(); render();
+load();
+try{ const c=JSON.parse(localStorage.getItem(WKEY)||'null'); if(c && applyWerte(c)) save(); }catch(e){}
+render();
 /* Erinnerungen: beim Öffnen und wenn die App wieder in den Vordergrund kommt */
 const pop=document.getElementById('pop');
 pop.addEventListener('click',ev=>{
   const b=ev.target.closest('[data-pop]'); if(!b||!popItem) return;
   const it=popItem;
+  if(b.dataset.pop==='copy'){ copyText(wertePrompt()); return; }
   if(b.dataset.pop==='later'){ snooze(it.id,7); toast('Erinnere dich in 7 Tagen'); }
   if(b.dataset.pop==='backup'){ S.lastBackup=Date.now(); save(); download(`zeiterfassung-backup-${iso(new Date())}.json`,JSON.stringify({app:'zeiterfassung',version:APP_VERSION,...S},null,1),'application/json'); }
-  if(b.dataset.pop==='close' && !it.manuell && !(S.erinn[it.id]||{}).done) snooze(it.id,1);
+  if(b.dataset.pop==='close' && !it.manuell && !it.info && !(S.erinn[it.id]||{}).done) snooze(it.id,1);
   closePop(); if(tab==='rente'||tab==='einst') render();
 });
 pop.addEventListener('change',ev=>{
@@ -1510,7 +1687,8 @@ pop.addEventListener('change',ev=>{
   setErledigt(popItem.id, ev.target.checked);
   if(ev.target.checked){ toast('Erledigt ✓'); setTimeout(()=>{ closePop(); if(tab==='rente') render(); },450); }
 });
-document.getElementById('popBg').addEventListener('click',()=>{ if(popItem && !popItem.manuell) snooze(popItem.id,1); closePop(); });
+document.getElementById('popBg').addEventListener('click',()=>{ if(popItem && !popItem.manuell && !popItem.info) snooze(popItem.id,1); closePop(); });
+ladeWerte();
 setTimeout(checkPop,800);
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') setTimeout(checkPop,600); });
 if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});

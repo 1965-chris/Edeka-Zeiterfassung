@@ -1,5 +1,5 @@
 // Offline-Cache: Netzwerk zuerst (damit Updates sofort ankommen), sonst Cache.
-const CACHE = 'zeiterfassung-v2.10';
+const CACHE = 'zeiterfassung-v2.12';
 const FILES = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

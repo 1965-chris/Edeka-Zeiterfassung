@@ -149,8 +149,15 @@ h2{font-size:15px;margin:4px 0 8px}
 .dots{display:flex;justify-content:center;gap:7px;margin:2px 0 0}
 .dots span{width:7px;height:7px;border-radius:50%;background:var(--line)}
 .dots span.on{background:var(--accent)}
-.cd-hero{padding:26px 14px}
-.cd-hero .big{font-size:56px}
+.cd-hero{padding:20px 14px}
+.cd{display:flex;align-items:center;gap:12px;padding:14px}
+.cd .ic{font-size:30px;line-height:1}
+.cd .tx{flex:1;min-width:0}
+.cd .tx b{display:block;font-size:16px}
+.cd .num{text-align:right;line-height:1}
+.cd .num b{display:block;font-size:34px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.5px}
+.cd .num span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.cd-hero .big{font-size:48px}
 .huge-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:14px}
 .huge-grid .stat .v{font-size:24px}
 .big{font-size:40px;font-weight:800;letter-spacing:-1px;font-variant-numeric:tabular-nums;line-height:1.1}
@@ -181,7 +188,7 @@ table.calc2 tr.sum td{font-weight:700;border-top:2px solid var(--line)}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.5';
+const APP_VERSION = 'v2.6';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -598,6 +605,52 @@ function countdownCard(klein){
     ${prozent!=null?`<div class="bar"><div style="width:${prozent.toFixed(1)}%"></div></div><div class="hint">${fmt(prozent)} % des Arbeitslebens geschafft 💪</div>`:''}
   </div>`;
 }
+function tageText(n){ return n===0?'heute':n===1?'morgen':n===2?'übermorgen':`in ${n} Tagen`; }
+const FREI=['frei','abbau','feiertag'];
+function istFrei(s){ const e=S.days[s]; return e ? FREI.includes(e.typ) : !!feiertag(s); }
+function freiCounter(){
+  const now=new Date(), heute=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const heuteFrei = heute.getDay()!==0 && istFrei(iso(heute));
+  for(let i=1;i<=120;i++){
+    const d=addDays(heute,i), s=iso(d); if(d.getDay()===0) continue;
+    if(istFrei(s)){
+      let arb=0; for(let j=heute.getHours()<12?0:1;j<i;j++){ const x=S.days[iso(addDays(heute,j))]; if(x?.typ==='arbeit') arb++; }
+      const e=S.days[s], art=e?TYPEN[e.typ].name:'Feiertag';
+      return `<div class="card cd dash" data-edit="${s}"><div class="ic">🛋️</div>
+        <div class="tx"><b>${heuteFrei?'Heute frei 🎉 · ':''}Nächster freier Tag</b><div class="muted">${WT[d.getDay()]} ${ddmm(d)} · ${art}${arb?` · noch ${arb} Arbeitstag${arb>1?'e':''}`:''}</div></div>
+        <div class="num"><b>${i}</b><span>${i===1?'Tag':'Tage'}</span></div></div>`;
+    }
+  }
+  return '';
+}
+function urlaubCounter(){
+  const now=new Date(), heute=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+  const block=(start)=>{ // zusammenhängender Urlaub ab start
+    let urlaub=0, last=start;
+    for(let d=start;;d=addDays(d,1)){ const s=iso(d), e=S.days[s];
+      if(e?.typ==='urlaub'){ urlaub++; last=d; continue; }
+      if(d.getDay()===0 || istFrei(s)) continue;
+      break; }
+    return {urlaub,last};
+  };
+  // gerade im Urlaub?
+  if(S.days[iso(heute)]?.typ==='urlaub'){
+    const b=block(heute), rest=Math.round((b.last-heute)/864e5);
+    return `<div class="card cd"><div class="ic">😎</div>
+      <div class="tx"><b>Du hast Urlaub!</b><div class="muted">bis ${WT[b.last.getDay()]} ${ddmm(b.last)}</div></div>
+      <div class="num"><b>${rest}</b><span>${rest===1?'Tag noch':'Tage noch'}</span></div></div>`;
+  }
+  for(let i=1;i<=400;i++){
+    const d=addDays(heute,i), s=iso(d);
+    if(S.days[s]?.typ==='urlaub'){
+      const b=block(d);
+      return `<div class="card cd dash" data-go="woche"><div class="ic">🌴</div>
+        <div class="tx"><b>Nächster Urlaub</b><div class="muted">${ddmm(d)}–${ddmm(b.last)}${b.last.getFullYear()} · ${b.urlaub} Urlaubstag${b.urlaub>1?'e':''}</div></div>
+        <div class="num"><b>${i}</b><span>${i===1?'Tag':'Tage'}</span></div></div>`;
+    }
+  }
+  return '';
+}
 function counterHero(){
   const r=S.settings.rente, now=new Date(), heute=new Date(now.getFullYear(),now.getMonth(),now.getDate());
   if(!r.beginn) return `<div class="card dash cd-hero" data-go="rente" style="text-align:center"><div class="big">🏖️</div><div style="margin-top:8px">Rentenbeginn eintragen</div><div class="muted">Tab „Rente“ → Rentenbeginn</div></div>`;
@@ -608,7 +661,7 @@ function counterHero(){
   const quote = arb>50 ? arb/365 : 5/7*0.88;
   const vb=r.versBeginn?parse(r.versBeginn):null, prozent = vb ? Math.min(100,(heute-vb)/(b-vb)*100) : null;
   return `<div class="card cd-hero" style="text-align:center">
-    <div class="muted">🏖️ Noch bis zur Rente am ${de2(r.beginn)}</div>
+    <div style="font-weight:700">🏖️ Rente am ${de2(r.beginn)}</div>
     <div class="big" style="margin-top:6px">${tage.toLocaleString('de-DE')}</div>
     <div style="font-weight:700;font-size:18px">Tage</div>
     <div class="huge-grid">
@@ -624,6 +677,7 @@ function counterHero(){
   </div>
   <div class="hint" style="text-align:center">Wischen für die Übersicht ›</div>`;
 }
+function countersPage(){ return freiCounter() + urlaubCounter() + counterHero(); }
 let startPage=0;
 function eintragText(e){
   if(!e) return '<span class="muted">kein Eintrag</span>';
@@ -646,7 +700,7 @@ function renderStart(){
   let urlaub=0; for(const [k,x] of Object.entries(S.days)) if(k.startsWith(y+'-') && x.typ==='urlaub') urlaub++;
   const m=heute.getMonth(), mr=monat(y,m), g=S.monate[`${y}-${pad(m+1)}`]||{};
   let bisher=0; for(let i=1;i<=heute.getDate();i++) bisher+=stunden(S.days[`${y}-${pad(m+1)}-${pad(i)}`]);
-  app.innerHTML=`<div class="dots"><span class="${startPage===0?'on':''}"></span><span class="${startPage===1?'on':''}"></span></div><div class="swipe" id="swipe"><section class="pg">${counterHero()}</section><section class="pg">
+  app.innerHTML=`<div class="dots"><span class="${startPage===0?'on':''}"></span><span class="${startPage===1?'on':''}"></span></div><div class="swipe" id="swipe"><section class="pg">${countersPage()}</section><section class="pg">
   <div class="card" data-edit="${hs}" style="cursor:pointer">
     <div class="muted">Heute${ft?' · 🎉 '+ft:''}</div>
     <div class="today-big">${eintragText(e)}</div>

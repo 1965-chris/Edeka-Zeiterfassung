@@ -190,7 +190,7 @@ table.calc2 tr.sum td{font-weight:700;border-top:2px solid var(--line)}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.8';
+const APP_VERSION = 'v2.9';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -214,6 +214,7 @@ const DEFAULT = {
          regelWort:'Baumberg', regelOrt:'EDEKA Möller, Geschwister-Scholl-Straße 69'},
     rente:{regel:'', beginn:'', frei:'', versBeginn:'', infoStand:'', infoEP:'', infoPrognose:'', infoRW:'', epExtra:'',
            rentenwert:42.52, de:{2024:47085, 2025:50493, 2026:51944}, kvZusatz:2.9, pv:3.6, anpassung:2},
+    steuer:{verh:false, pName:'Partner/in', kvZ:2.9, pv:1.8},
     schichten:[
       {name:'Früh',  von:'05:45', bis:'13:45', pause:30},
       {name:'Spät',  von:'13:15', bis:'21:15', pause:30},
@@ -232,7 +233,8 @@ function load(){
   { const k=S.settings.kal; if(k.ort==='EDEKA Möller, Geschwister-Scholl-Straße 69' && k.regelOrt==='EDEKA Möller, Elsa-Neumann-Straße 6, 40789 Monheim am Rhein'){ k.ort=DEFAULT.settings.kal.ort; k.regelOrt=DEFAULT.settings.kal.regelOrt; } }
   { const alt=(S.settings.rente)||{}; S.settings.rente=Object.assign(structuredClone(DEFAULT.settings.rente), alt); S.settings.rente.de=Object.assign({}, DEFAULT.settings.rente.de, alt.de||{}); }
   if(!altKal.v){ const k=S.settings.kal; k.v=2; k.typen=[...DEFAULT.settings.kal.typen]; delete k.urlaubAn; delete k.urlaubName; }
-  S.days = S.days||{}; S.monate = S.monate||{}; S.kalQ = S.kalQ||[];
+  S.settings.steuer = Object.assign(structuredClone(DEFAULT.settings.steuer), S.settings.steuer||{});
+  S.days = S.days||{}; S.monate = S.monate||{}; S.kalQ = S.kalQ||[]; S.steuer = S.steuer||{};
 }
 /* UI-Zustand (aufgeklappte Bereiche) – nur Komfort */
 let UI={}; try{ UI=JSON.parse(localStorage.getItem('zeiterfassung-ui'))||{}; }catch(e){ UI={}; }
@@ -327,9 +329,9 @@ const app=document.getElementById('app');
 function toast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),1800);}
 
 function render(){
-  document.querySelectorAll('.tabbar button').forEach(b=>b.classList.toggle('act',b.dataset.tab===tab));
+  document.querySelectorAll('.tabbar button').forEach(b=>b.classList.toggle('act',b.dataset.tab===tab || (tab==='steuer'&&b.dataset.tab==='jahr')));
   renderKalBar();
-  ({start:renderStart,woche:renderWoche,monat:renderMonat,jahr:renderJahr,rente:renderRente,einst:renderEinst})[tab]();
+  ({start:renderStart,woche:renderWoche,monat:renderMonat,jahr:renderJahr,steuer:renderSteuer,rente:renderRente,einst:renderEinst})[tab]();
   document.getElementById('setBtn').classList.toggle('on',tab==='einst');
 }
 
@@ -520,6 +522,7 @@ function renderJahr(){
     <div class="stat"><div class="v">${T.krank}</div><div class="l">Krank</div></div>
     <div class="stat"><div class="v ${saldo>=0?'pos':'neg'}">${fmtS(saldo)}</div><div class="l">${kLabel}</div></div>
   </div>
+  ${(()=>{ const sc=steuerCalc(y), r=Math.round(sc.rest), h=sc.iB||sc.pB; return `<div class="card dash" data-go="steuer"><h2>🧾 Steuer-Check ${y}<span>›</span></h2><div class="${!h||Math.abs(r)<25?'muted':r>0?'neg':'pos'}" style="font-weight:${h?700:400}">${h?`voraussichtlich ${ergText(r)}`:'Nachzahlung oder Erstattung? Einkommensteuer schätzen'}</div></div>`; })()}
   <div class="card"><table>
     <thead><tr><th>Monat</th><th>Std.</th><th>Br./h</th><th>Ne./h</th><th>Url.</th></tr></thead>
     <tbody>${rows}</tbody>
@@ -786,6 +789,166 @@ function renderRente(){
       ${f('anpassung','Angenommene Rentenerhöhung pro Jahr (%)')}`);
 }
 
+/* ---------- Steuer (Schätzung Einkommensteuer) ---------- */
+/* § 32a EStG je Jahr + Lohnsteuer-Eckwerte (Kl. V), Beitragsbemessungsgrenzen, Minijob-Grenze */
+const TARIF={
+  2024:{g:11784,z2:17005,a:954.80,z3:66760,b:181.19,c:991.21,d:10636.31,e:18971.06,w:[13279,33380,222260],bbgR:90600,bbgK:62100,mini:538},
+  2025:{g:12096,z2:17443,a:932.30,z3:68480,b:176.64,c:1015.13,d:10911.92,e:19246.67,w:[13785,34240,222260],bbgR:96600,bbgK:66150,mini:556},
+  2026:{g:12348,z2:17799,a:914.51,z3:69878,b:173.10,c:1034.87,d:11135.63,e:19470.38,w:[14071,34939,222260],bbgR:101400,bbgK:69750,mini:603}
+};
+const tarifJahr = y => y<2024 ? 2024 : y>2026 ? 2026 : y;
+const tarifP = y => y>2026 ? {...TARIF[2026], mini:633} : TARIF[tarifJahr(y)];
+function estT(x,P){
+  x=Math.floor(x); if(x<=P.g) return 0;
+  if(x<=P.z2){ const y=(x-P.g)/1e4; return Math.floor((P.a*y+1400)*y); }
+  if(x<=P.z3){ const z=(x-P.z2)/1e4; return Math.floor((P.b*z+2397)*z+P.c); }
+  if(x<=277825) return Math.floor(0.42*x-P.d);
+  return Math.floor(0.45*x-P.e);
+}
+/* Jahres-Lohnsteuer nach Steuerklasse (Programmablauf vereinfacht, Vorsorgepauschale RV/KV/PV) */
+function lstJahr(b,kl,P,G){
+  if(!(b>0) || !kl) return 0;
+  const vsp = 0.093*Math.min(b,P.bbgR) + (0.07+G.kvZ/200+G.pv/100)*Math.min(b,P.bbgK);
+  const X = Math.max(0, Math.floor(b-1230-36-vsp));
+  if(kl==3) return 2*estT(X/2,P);
+  if(kl==5){
+    const up = zx => Math.max(2*(estT(zx*1.25,P)-estT(zx*0.75,P)), Math.floor(zx*0.14)), [w1,w2,w3]=P.w;
+    if(X>w2) return Math.floor(up(w2) + (X>w3 ? (w3-w2)*0.42+(X-w3)*0.45 : (X-w2)*0.42));
+    let st=up(X); if(X>w1) st=Math.min(st, up(w1)+(X-w1)*0.42); return Math.floor(st);
+  }
+  return estT(X,P);
+}
+/* Midijob: beitragspflichtige Einnahme des Arbeitnehmers im Übergangsbereich */
+const midiBE = (m,P) => (m>P.mini && m<=2000) ? 2000/(2000-P.mini)*(m-P.mini) : m;
+/* Eingaben: "1.234,56" / "1234.56" / "1.500" */
+const numDE = v => { let s=String(v??'').trim().replace(/\s|€/g,''); if(s.includes(',')) s=s.replace(/\./g,'').replace(',','.'); else if(/^\d{1,3}(\.\d{3})+$/.test(s)) s=s.replace(/\./g,''); const n=parseFloat(s); return isFinite(n)?n:0; };
+const leer = v => v===''||v==null;
+const e0 = n => Math.round(n).toLocaleString('de-DE')+' €';
+const ST_DEF = {ich:{stkl:4, lohn:'', sonder:'', lst:'', wk:''}, p:{stkl:4, monat:'', sonder:'', midi:false, lst:'', wk:''}, vz:'', hw:'', abz:''};
+const stFill = o => ({...structuredClone(ST_DEF), ...o, ich:{...ST_DEF.ich, ...(o.ich||{})}, p:{...ST_DEF.p, ...(o.p||{})}});
+/* Werte eines Jahres – ohne eigene Werte werden die des letzten Jahres davor angezeigt */
+function stY(y,create){
+  S.steuer=S.steuer||{};
+  if(S.steuer[y]) return {d:(S.steuer[y]=stFill(S.steuer[y])), von:null};
+  const prev=Object.keys(S.steuer).map(Number).filter(v=>v<y).sort((a,b)=>b-a)[0];
+  const d = prev ? stFill(structuredClone(S.steuer[prev])) : stFill({});
+  if(prev){ d.ich.lst=''; d.p.lst=''; }
+  if(create){ S.steuer[y]=d; return {d, von:null}; }
+  return {d, von:prev||null};
+}
+/* Dein Lohn aus den Monaten der App; fehlende Monate am Ende des Jahres werden hochgerechnet */
+function lohnApp(y){
+  const nowY=new Date().getFullYear(); let lohn=0, sonder=0, last=-1, hoch=0; const b=[];
+  for(let m=0;m<12;m++){ const g=S.monate[`${y}-${pad(m+1)}`]||{}; b[m]=numDE(g.brutto); sonder+=numDE(g.sonderBrutto); if(b[m]>0){ lohn+=b[m]; last=m; } }
+  if(last>=0 && y>=nowY) for(let m=last+1;m<12;m++){ lohn+=b[last]; hoch++; }
+  return {lohn, sonder, hoch};
+}
+function steuerCalc(y){
+  const {d,von}=stY(y), G=S.settings.steuer, P=tarifP(y), verh=!!G.verh, n=v=>leer(v)?0:(+v||0);
+  const app=lohnApp(y);
+  const iLohn = leer(d.ich.lohn) ? app.lohn : n(d.ich.lohn), iSon = leer(d.ich.sonder) ? app.sonder : n(d.ich.sonder), iB=iLohn+iSon;
+  const pB = verh ? n(d.p.monat)*12 + n(d.p.sonder) : 0;
+  const klI = verh ? +d.ich.stkl : 1, klP = verh ? +d.p.stkl : 0;
+  const lIc=lstJahr(iB,klI,P,G), lPc=lstJahr(pB,klP,P,G);
+  const lI = leer(d.ich.lst) ? lIc : n(d.ich.lst), lP = verh ? (leer(d.p.lst) ? lPc : n(d.p.lst)) : 0;
+  const eI=Math.max(0, iB-Math.max(1230,n(d.ich.wk))), eP=verh ? Math.max(0, pB-Math.max(1230,n(d.p.wk))) : 0;
+  const kvS=0.073+G.kvZ/200, pvS=G.pv/100;
+  const sv = be => ({rv:0.093*Math.min(be,P.bbgR), kv:kvS*Math.min(be,P.bbgK), pv:pvS*Math.min(be,P.bbgK)});
+  const sI=sv(iB), sP=sv(verh ? (d.p.midi ? midiBE(n(d.p.monat),P)*12 + n(d.p.sonder) : pB) : 0);
+  const vors = sI.rv+sP.rv + 0.96*(sI.kv+sP.kv) + sI.pv+sP.pv;   // Altersvorsorge voll, KV ohne Krankengeld-Anteil (−4 %)
+  const sa = Math.max(verh?72:36, n(d.abz));
+  const zve = Math.max(0, Math.floor(eI+eP-vors-sa));
+  const est0 = verh ? 2*estT(Math.floor(zve/2),P) : estT(zve,P);
+  const erm = Math.min(Math.round(0.2*n(d.hw)), 5200), est=Math.max(0, est0-erm);
+  const vz=n(d.vz), lst=lI+lP, rest=est-lst-vz;
+  let vgl=null;
+  if(verh && iB && pB) vgl=[[3,5],[4,4],[5,3]].map(([a,b])=>{ const l=lstJahr(iB,a,P,G)+lstJahr(pB,b,P,G); return {k:`${a}/${b}`, l, erg:est-l, akt:a===klI&&b===klP}; });
+  return {d,von,verh,app,iB,iLohn,iSon,pB,klI,klP,lI,lP,lIc,lPc,wk:(iB-eI)+(pB-eP),vors,sa,zve,est0,erm,est,vz,lst,rest,vgl,tj:tarifJahr(y)};
+}
+const ergText = r => Math.abs(r)<25 ? 'passt – etwa ±0 €' : `${e0(Math.abs(r))} ${r>0?'Nachzahlung':'Erstattung'}`;
+function renderSteuer(){
+  const y=curYear, c=steuerCalc(y), G=S.settings.steuer, d=c.d, pn=esc(G.pName||'Partner/in'), r=Math.round(c.rest), ok=Math.abs(r)<25;
+  setTitle('Steuer', `Schätzung ${y}`);
+  setNav(`<div class="card nav"><button class="iconbtn" data-act="yprev">‹</button><b>${y}</b><button class="iconbtn" data-act="ynext">›</button></div>`);
+  const fv = v => leer(v) ? '' : String(v).replace('.',',');
+  const sm = t => `<div class="muted" style="font-size:11px">${t}</div>`;
+  const inp = (path,label,ph,hint) => { const [a,b]=path.split('.'); const v=b?d[a][b]:d[a]; return `<label class="f">${label}</label><input inputmode="decimal" data-st="${path}" value="${fv(v)}" placeholder="${ph}">${hint?`<div class="hint">${hint}</div>`:''}`; };
+  const kl = (w,cur) => `<label class="f">Steuerklasse</label><div class="seg">${[3,4,5].map(k=>`<button data-stkl="${w}:${k}" class="${+cur===k?'on':''}">${k}</button>`).join('')}</div>`;
+  const has = c.iB || c.pB;
+  let top = c.von ? `<div class="hint" style="text-align:center;margin-top:8px">Werte aus ${c.von} übernommen – sobald du etwas änderst, gelten sie für ${y}.</div>` : '';
+  if(!has) top += `<div class="card"><div class="muted">Trag unten die Einkommen ein (dein Lohn kommt automatisch aus den Monaten der App), dann schätzt die App, ob eine Nachzahlung oder Erstattung kommt.</div></div>`;
+  else {
+    top += `<div class="card" style="text-align:center">
+      <div class="muted">Voraussichtliches Ergebnis ${y}</div>
+      <div class="big ${ok?'':r>0?'neg':'pos'}">${ok?'≈ 0 €':e0(Math.abs(r))}</div>
+      <div style="font-weight:700">${ok?'passt – keine Nachzahlung 👍':r>0?'Nachzahlung':'Erstattung'}</div>
+      ${ok&&r?`<div class="muted">rechnerisch ${e0(Math.abs(r))} ${r>0?'Nachzahlung':'Erstattung'}</div>`:''}
+    </div>
+    <div class="card"><h2>So rechnet die App</h2><table class="calc2"><tbody>
+      <tr><td>Bruttolohn du${sm(`${leer(d.ich.lohn)?`Lohn aus der App${c.app.hoch?`, ${c.app.hoch} Monat${c.app.hoch>1?'e':''} hochgerechnet`:''}`:'Lohn eingetragen'} · Sonderz. ${e0(c.iSon)}`)}</td><td>${e0(c.iB)}</td></tr>
+      ${c.verh?`<tr><td>Bruttolohn ${pn}${d.p.midi?sm('Midijob'):''}</td><td>${e0(c.pB)}</td></tr>`:''}
+      <tr><td>− Werbungskosten</td><td>−${e0(c.wk)}</td></tr>
+      <tr><td>− Vorsorge${sm('Renten-, Kranken-, Pflegeversicherung')}</td><td>−${e0(c.vors)}</td></tr>
+      <tr><td>− Sonderausgaben</td><td>−${e0(c.sa)}</td></tr>
+      <tr class="sum"><td>Zu versteuerndes Einkommen</td><td>${e0(c.zve)}</td></tr>
+      <tr><td>Einkommensteuer${sm(`${c.verh?'Splittingtarif':'Grundtarif'} ${c.tj}${c.tj!==y?` – Tarif ${y} noch nicht beschlossen`:''}`)}</td><td>${e0(c.est0)}</td></tr>
+      ${c.erm?`<tr><td>− Handwerker / Haushalt (20 %)</td><td>−${e0(c.erm)}</td></tr>`:''}
+      <tr class="sum"><td>Steuer ${y}</td><td>${e0(c.est)}</td></tr>
+      <tr><td>− Lohnsteuer du (Kl. ${c.klI})${sm(leer(d.ich.lst)?'berechnet':'eingetragen')}</td><td>−${e0(c.lI)}</td></tr>
+      ${c.verh?`<tr><td>− Lohnsteuer ${pn} (Kl. ${c.klP})${sm(leer(d.p.lst)?'berechnet':'eingetragen')}</td><td>−${e0(c.lP)}</td></tr>`:''}
+      ${c.vz?`<tr><td>− Vorauszahlungen</td><td>−${e0(c.vz)}</td></tr>`:''}
+      <tr class="sum"><td>${r>=0?'Nachzahlung':'Erstattung'}</td><td class="${ok?'':r>0?'neg':'pos'}">${e0(Math.abs(r))}</td></tr>
+    </tbody></table></div>`;
+    if(c.vgl){
+      const akt=c.vgl.find(v=>v.akt), luecke=akt?akt.erg:0;
+      top += `<div class="card"><h2>Steuerklassen im Vergleich</h2><table><thead><tr><th>Klassen</th><th>Lohnsteuer</th><th>Ergebnis*</th></tr></thead><tbody>
+        ${c.vgl.map(v=>`<tr${v.akt?' style="font-weight:700"':''}><td>${v.k}${v.akt?' (jetzt)':''}</td><td>${e0(v.l)}</td><td class="${Math.abs(v.erg)<25?'':v.erg>0?'neg':'pos'}">${Math.abs(v.erg)<25?'±0 €':`${e0(Math.abs(v.erg))} ${v.erg>0?'Nachz.':'Erst.'}`}</td></tr>`).join('')}
+        <tr><td>4/4 mit Faktor</td><td>≈ ${e0(c.est0)}</td><td>≈ ±0 €</td></tr>
+      </tbody></table>
+      <div class="hint">* ohne Vorauszahlungen. Die Steuer ist bei jeder Kombination gleich – es ändert sich nur, wie viel schon monatlich vom Lohn abgeht.</div>
+      ${akt&&luecke>=25?`<div class="hint">Lücke bei ${akt.k}: ≈ ${e0(luecke)} im Jahr – das entspricht Vorauszahlungen von ≈ ${e0(luecke/4)} pro Quartal.</div>`:''}</div>`;
+    }
+  }
+  app.innerHTML = top
+  + sec('st_ich', `Dein Einkommen ${y}`, `
+      ${c.verh?kl('ich',d.ich.stkl):''}
+      <div class="grid2">
+        <div>${inp('ich.lohn','Lohn ohne Sonderz. (€)', Math.round(c.app.lohn).toLocaleString('de-DE'))}</div>
+        <div>${inp('ich.sonder','Sonderzahlungen (€)', Math.round(c.app.sonder).toLocaleString('de-DE'))}</div>
+      </div>
+      <div class="hint">Leer = aus der App: Lohn ${e0(c.app.lohn)}${c.app.hoch?` (davon ${c.app.hoch} Monat${c.app.hoch>1?'e':''} hochgerechnet)`:''}, Sonderzahlungen ${e0(c.app.sonder)}. Ein Eintrag ersetzt den App-Wert.</div>
+      <div class="grid2">
+        <div>${inp('ich.lst','Lohnsteuer im Jahr (€)', Math.round(c.lIc).toLocaleString('de-DE'))}</div>
+        <div>${inp('ich.wk','Werbungskosten (€)','1.230')}</div>
+      </div>
+      <div class="hint">Lohnsteuer leer = berechnet (${e0(c.lIc)}). Nach Jahresende den Wert der Lohnsteuerbescheinigung eintragen. Werbungskosten nur, wenn es mehr als 1.230 € sind.</div>`, has?e0(c.iB):'')
+  + (c.verh ? sec('st_p', `${pn} ${y}`, `
+      ${kl('p',d.p.stkl)}
+      <div class="grid2">
+        <div>${inp('p.monat','Monatsbrutto (€)','0')}</div>
+        <div>${inp('p.sonder','Sonderzahlungen/Jahr (€)','0')}</div>
+      </div>
+      <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-st="p.midi" ${d.p.midi?'checked':''}> Midijob (Übergangsbereich bis 2.000 €)</label>
+      <div class="grid2">
+        <div>${inp('p.lst','Lohnsteuer im Jahr (€)', Math.round(c.lPc).toLocaleString('de-DE'))}</div>
+        <div>${inp('p.wk','Werbungskosten (€)','1.230')}</div>
+      </div>
+      <div class="hint">Lohnsteuer leer = berechnet (${e0(c.lPc)}).</div>`, c.pB?e0(c.pB):'') : '')
+  + sec('st_abz', `Vorauszahlungen & Abzüge ${y}`, `
+      ${inp('vz','Vorauszahlungen im Jahr (€)','0','Alle Raten des Jahres zusammen – steht im Vorauszahlungsbescheid.')}
+      ${inp('hw','Handwerker & haushaltsnahe Dienste – Arbeitskosten (€)','0','20 % davon gehen direkt von der Steuer ab (z. B. Handwerkerrechnung, Hausmeister oder Reinigung aus der Nebenkostenabrechnung).')}
+      ${inp('abz','Weitere Sonderausgaben (€)','0','z. B. Spenden. Unter 72 € zählt der Pauschbetrag.')}`, c.vz?`VZ ${e0(c.vz)}`:'')
+  + sec('st_allg','Allgemein',`
+      <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-stg="verh" ${G.verh?'checked':''}> Verheiratet – gemeinsame Veranlagung</label>
+      ${G.verh?`<label class="f">Name Partner/in</label><input data-stg="pName" value="${esc(G.pName)}">`:''}
+      <div class="grid2">
+        <div><label class="f">KV-Zusatzbeitrag (%)</label><input inputmode="decimal" data-stg="kvZ" value="${fv(G.kvZ)}"></div>
+        <div><label class="f">Pflege Arbeitnehmer (%)</label><input inputmode="decimal" data-stg="pv" value="${fv(G.pv)}"></div>
+      </div>
+      <div class="hint">Zusatzbeitrag der Krankenkasse steht auf der Abrechnung. Pflege: 1,8 % mit Kindern, 2,4 % kinderlos.</div>`)
+  + `<div class="hint" style="margin:6px 4px 14px">Grobe Schätzung ohne Gewähr. Nicht berücksichtigt: Kirchensteuer, Solidaritätszuschlag, außergewöhnliche Belastungen und andere Einkünfte.</div>`;
+}
+
 /* ---------- Einstellungen ---------- */
 function renderEinst(){
   const st=S.settings, k=st.kal; setNav(''); setTitle('Einstellungen', APP_VERSION);
@@ -921,7 +1084,7 @@ function setTitle(t,s){
   const n=new Date(); let off=false;
   if(tab==='woche') off = curMon.getTime()!==monday(n).getTime();
   if(tab==='monat') off = curMonth.getFullYear()!==n.getFullYear() || curMonth.getMonth()!==n.getMonth();
-  if(tab==='jahr') off = curYear!==n.getFullYear();
+  if(tab==='jahr'||tab==='steuer') off = curYear!==n.getFullYear();
   document.getElementById('todayBtn').hidden=!off;
 }
 document.getElementById('setBtn').addEventListener('click',()=>{ tab = tab==='einst' ? 'start' : 'einst'; render(); scrollTo(0,0); });
@@ -949,11 +1112,12 @@ document.querySelector('.tabbar').addEventListener('click',ev=>{const b=ev.targe
 document.getElementById('sheetBg').addEventListener('click',closeSheet);
 
 const onClick=ev=>{
-  const t=ev.target.closest('[data-act],[data-edit],[data-go],[data-coll],[data-fart],[data-fday],[data-kaltyp],[data-tpldel],[data-month]'); if(!t) return;
+  const t=ev.target.closest('[data-act],[data-edit],[data-go],[data-coll],[data-fart],[data-fday],[data-kaltyp],[data-tpldel],[data-month],[data-stkl]'); if(!t) return;
   if(t.dataset.go){ tab=t.dataset.go; render(); scrollTo(0,0); return; }
   if(t.dataset.coll){ const id=t.dataset.coll; UI[id]=!UI[id]; uiSave(); t.closest('.coll').classList.toggle('open',!!UI[id]); return; }
   if(t.dataset.fart){ fill.art = fill.art===t.dataset.fart?null:t.dataset.fart; return render(); }
   if(t.dataset.fday){ const s=t.dataset.fday; fill.days = fill.days.includes(s)?fill.days.filter(x=>x!==s):[...fill.days,s]; return render(); }
+  if(t.dataset.stkl){ const [w,k]=t.dataset.stkl.split(':'), d=stY(curYear,true).d, paar={3:5,4:4,5:3}; d[w].stkl=+k; d[w==='ich'?'p':'ich'].stkl=paar[k]; save(); const y0=scrollY; render(); scrollTo(0,y0); return; }
   if(t.dataset.edit) return openEdit(t.dataset.edit);
   if(t.dataset.month){ curMonth=new Date(curYear,+t.dataset.month,1); tab='monat'; return render(); }
   if(t.dataset.kaltyp){ const a=S.settings.kal.typen, x=t.dataset.kaltyp; S.settings.kal.typen = a.includes(x)?a.filter(v=>v!==x):[...a,x]; save(); return render(); }
@@ -1019,6 +1183,15 @@ app.addEventListener('change',ev=>{
   }
   if(el.dataset.rente){ const k=el.dataset.rente, v=el.value.trim(); S.settings.rente[k] = el.type==='date' ? v : (v===''?'':num(v)); save(); softRender(); toast('Gespeichert'); return; }
   if(el.dataset.rde){ const v=el.value.trim(); if(v==='') delete S.settings.rente.de[el.dataset.rde]; else S.settings.rente.de[el.dataset.rde]=num(v); save(); softRender(); toast('Gespeichert'); return; }
+  if(el.dataset.st){
+    const d=stY(curYear,true).d, [a,b]=el.dataset.st.split('.'), v = el.type==='checkbox' ? el.checked : (el.value.trim()==='' ? '' : numDE(el.value));
+    if(b) d[a][b]=v; else d[a]=v; save(); softRender(); toast('Gespeichert'); return;
+  }
+  if(el.dataset.stg){
+    const k=el.dataset.stg, G=S.settings.steuer;
+    G[k] = el.type==='checkbox' ? el.checked : k==='pName' ? el.value.trim() : numDE(el.value);
+    save(); softRender(); toast('Gespeichert'); return;
+  }
   if(el.dataset.ujahr){
     S.urlaubJahr=S.urlaubJahr||{}; const v=el.value.trim();
     if(v==='') delete S.urlaubJahr[el.dataset.ujahr]; else S.urlaubJahr[el.dataset.ujahr]=num(v);
@@ -1041,7 +1214,7 @@ app.addEventListener('change',ev=>{
       const d=JSON.parse(fr.result); if(!d.days) throw 0;
       const nT=Object.keys(d.days).length;
       if(!confirm(nT?`Backup mit ${nT} Tagen laden? Vorhandene Einträge mit gleichem Datum werden überschrieben.`:'Einstellungen aus der Datei übernehmen?')) return;
-      Object.assign(S.days,d.days); Object.assign(S.monate,d.monate||{}); if(d.urlaubJahr) S.urlaubJahr=Object.assign(S.urlaubJahr||{},d.urlaubJahr); if(d.settings) S.settings=Object.assign(S.settings,d.settings);
+      Object.assign(S.days,d.days); Object.assign(S.monate,d.monate||{}); if(d.urlaubJahr) S.urlaubJahr=Object.assign(S.urlaubJahr||{},d.urlaubJahr); if(d.steuer) S.steuer=Object.assign(S.steuer||{},d.steuer); if(d.settings) S.settings=Object.assign(S.settings,d.settings);
       save(); load(); render(); toast(nT?'Backup geladen':'Übernommen');
     }catch(e){ alert('Datei konnte nicht gelesen werden.'); } };
     fr.readAsText(el.files[0]); el.value='';

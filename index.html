@@ -201,6 +201,8 @@ details summary{cursor:pointer;padding:6px 0}
 .aend .btn{height:44px;padding:0}
 .helpbtn{font-weight:800;font-size:19px}
 .info ol{margin:4px 0 8px;padding-left:20px}
+.ver{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.ver:first-child{border-top:0;margin-top:4px}
 .info ol li{margin:4px 0}
 </style>
 </head>
@@ -224,7 +226,7 @@ details summary{cursor:pointer;padding:6px 0}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.16';
+const APP_VERSION = 'v2.17';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -1220,7 +1222,8 @@ function backupItem(){ const l=S.lastBackup?new Date(S.lastBackup):null;
 function faellig(){
   const heute=iso(new Date()), E=S.erinn||{}, out=[];
   for(const s of fahrplan()){ const z=E[s.id]||{}; if(!z.done && s.due<=heute && !(z.snooze && z.snooze>heute)) out.push(s); }
-  if(WERTE && S.werteSeen && WERTE.stand>S.werteSeen) out.unshift({id:'werte', ic:'📢', t:'Neue Rechenwerte', info:true, b:`<p>Stand <b>${de2(WERTE.stand)}</b>:</p><ul>${(WERTE.neu||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul><p class="muted">Steuer-Check und Rentenrechner rechnen ab sofort damit.</p>`});
+  if(S.lastVersion!==APP_VERSION) out.unshift(neuItem());
+  if(WERTE && S.werteSeen && WERTE.stand>S.werteSeen) out.push({id:'werte', ic:'📢', t:'Neue Rechenwerte', info:true, b:`<p>Stand <b>${de2(WERTE.stand)}</b>:</p><ul>${(WERTE.neu||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul><p class="muted">Steuer-Check und Rentenrechner rechnen ab sofort damit.</p>`});
   for(const w of wcItems()){ const z=E[w.id]||{}; if(!z.done && !(z.snooze && z.snooze>heute)) out.push(w); }
   const bt=+S.settings.backupTage||0, z=E.backup||{};
   if(bt>0 && Object.keys(S.days).length && !(z.snooze && z.snooze>heute)){ const l=S.lastBackup||0; if(!l || (Date.now()-l)/864e5>=bt) out.push(backupItem()); }
@@ -1244,6 +1247,7 @@ function snooze(id,tage){ S.erinn=S.erinn||{}; const z=S.erinn[id]=S.erinn[id]||
 function closePop(){
   const it=popItem; popItem=null;
   if(it?.id==='werte' && WERTE){ S.werteSeen=WERTE.stand; save(); }
+  if(it?.id==='neu'){ S.lastVersion=APP_VERSION; save(); }
   document.getElementById('pop').classList.remove('open'); document.getElementById('popBg').classList.remove('open');
   if(it && !it.manuell) setTimeout(checkPop,400);
 }
@@ -1296,10 +1300,49 @@ function openHilfe(){
   edit=null; const h=HILFE[tab]||[];
   document.getElementById('sheet').innerHTML=`<div class="nav" style="margin-bottom:4px"><b>❓ Hilfe · ${SEITE[tab]||''}</b><button class="iconbtn" data-act="close">✕</button></div>
     <div class="info">${h.map(([t,x])=>`<h2 style="margin:14px 0 2px">${t}</h2><p style="margin-top:2px">${x}</p>`).join('')}</div>
-    <div class="hint" style="margin-top:16px">Zeiterfassung ${APP_VERSION}${WERTE?` · Rechenwerte Stand ${de2(WERTE.stand)}`:''}</div>`;
+    <button class="btn small" data-act="info" style="margin-top:16px">ℹ️ Info & Versionen</button>
+    <div class="hint">Zeiterfassung ${APP_VERSION}${WERTE?` · Rechenwerte Stand ${de2(WERTE.stand)}`:''}</div>`;
   document.getElementById('sheet').classList.add('open'); document.getElementById('sheetBg').classList.add('open');
 }
 
+
+/* ---------- Info & Versionen ----------
+   Bei jeder neuen Version: APP_VERSION erhöhen, oben in VERSIONEN einen Eintrag ergänzen und in sw.js den CACHE-Namen anpassen. */
+const ENTWICKLER='Christian Mättig', PARTNER='Claude (Anthropic)';
+const VERSIONEN=[
+  {v:'2.17', d:'07.10.2026', t:['Hinweis „Was ist neu“ nach jedem Update','Info-Seite mit allen Versionen (⚙️ → Info & Versionen)']},
+  {v:'2.16', d:'07.10.2026', t:['Ü-Abbau als ganztägiger Termin im Kalender','Knopf „Künftige Ü-Abbau-Tage senden“']},
+  {v:'2.15', d:'07.10.2026', t:['Kalender: Löschzeilen werden sicher erkannt','„Letzte Übertragung nochmal kopieren“ mit aktuellem Stand']},
+  {v:'2.14', d:'07.10.2026', t:['Kalender im Hintergrund übertragen (Zwischenablage + Rückseite tippen)']},
+  {v:'2.13', d:'07.10.2026', t:['Schutz: „KW komplett senden“ löscht keine Schichten an Tagen ohne Eintrag']},
+  {v:'2.12', d:'06.10.2026', t:['Erinnerung „Rechenwerte prüfen“ am 15. Januar und 15. Mai mit Prüftext für Claude','Unplausible Rechenwerte werden ignoriert']},
+  {v:'2.11', d:'06.10.2026', t:['Gehaltsänderung ab Monat (du und Partner/in)','Lohn „Auf Folgemonate übertragen“','Auswertung und Steuer-Check schließbar, alles aufklappbar','❓ Hilfe auf jeder Seite','Rechenwerte automatisch aus werte.json']},
+  {v:'2.10', d:'06.10.2026', t:['Fahrplan zur Rente mit Erinnerungen','Infos und Kontakt zum Rentenantrag','Auswertung: Urlaub, Frei, Überstunden, SU, Schichten','Änderungsprotokoll ✎','Backup-Erinnerung']},
+  {v:'2.9',  d:'06.10.2026', t:['Steuer-Check: Nachzahlung oder Erstattung, Steuerklassen-Vergleich']},
+  {v:'2.8',  von:'2.0', t:['Startseite mit Countdowns: freier Tag, Urlaub, Rente','Stechuhr-Bild und neues App-Icon','Rente: Countdown, Entgeltpunkte, Rentenrechner','Mehrere Tage auf einmal eintragen','Kalender mit Ort, Bemerkung und Urlaub','Aufklappbare Einstellungen, Eingabefelder behalten den Fokus']},
+  {v:'1.12', von:'1.0', d:'ab 04.10.2026', t:['Erste Version aus dem Stunden-Tabellenblatt: Woche, Monat, Jahr','Überstundenkonto, Schicht-Vorlagen, Feiertage NRW','Brutto/Netto und Sonderzahlungen, Urlaubsanspruch je Jahr, Ü-Abbau','Kalender-Abgleich per Kurzbefehl']}
+];
+const vNum = x => String(x||'').replace(/^v/,'').split('.').map(Number);
+const vNeuer = (a,b) => { const [a1,a2=0]=vNum(a), [b1,b2=0]=vNum(b); return a1!==b1 ? a1>b1 : a2>b2; };
+function neuItem(){
+  const alt=S.lastVersion, liste=VERSIONEN.filter(x=>!x.von && (alt ? vNeuer(x.v,alt) : x.v===APP_VERSION.slice(1)));
+  return {id:'neu', ic:'🎉', t:`Neu in ${APP_VERSION}`, info:true,
+    b: liste.map(x=>`${liste.length>1?`<p style="margin-bottom:0"><b>v${x.v}</b></p>`:''}<ul>${x.t.map(z=>`<li>${z}</li>`).join('')}</ul>`).join('') + `<p class="muted">Alle Versionen: ⚙️ → ℹ️ Info & Versionen</p>`};
+}
+function openInfo(){
+  edit=null;
+  document.getElementById('sheet').innerHTML=`<div class="nav" style="margin-bottom:4px"><b>ℹ️ Info & Versionen</b><button class="iconbtn" data-act="close">✕</button></div>
+    <div style="text-align:center;margin:10px 0 6px">
+      <img src="icon-192.png" alt="" style="width:76px;height:76px;border-radius:18px;box-shadow:0 2px 8px rgba(0,0,0,.15)">
+      <div style="font-size:21px;font-weight:800;margin-top:8px">Zeiterfassung</div>
+      <div class="muted">Version ${APP_VERSION.slice(1)}${WERTE?` · Rechenwerte Stand ${de2(WERTE.stand)}`:''}</div>
+      <p style="margin:12px 0 0">Entwickelt von <b>${ENTWICKLER}</b><br>in Kooperation mit <b>${PARTNER}</b></p>
+    </div>
+    <h2 style="margin-top:18px">Versionen</h2>
+    <div class="info">${VERSIONEN.map(x=>`<div class="ver"><div><b>v${x.von?`${x.von} – v${x.v}`:x.v}</b>${x.v===APP_VERSION.slice(1)?' <span class="tag ok">aktuell</span>':''}</div>${x.d?`<span class="muted">${x.d}</span>`:''}</div><ul>${x.t.map(z=>`<li>${z}</li>`).join('')}</ul>`).join('')}</div>
+    <div class="hint" style="margin-top:12px">Deine Daten liegen nur auf diesem iPhone – nichts davon wird ins Internet übertragen.</div>`;
+  document.getElementById('sheet').classList.add('open'); document.getElementById('sheetBg').classList.add('open');
+}
 /* ---------- Rechenwerte automatisch (werte.json im Repo) ---------- */
 const WKEY='zeiterfassung-werte', MINIJOB={2027:633};
 let WERTE=null;
@@ -1336,6 +1379,7 @@ function ladeWerte(){
 function renderEinst(){
   const st=S.settings, k=st.kal; setNav(''); setTitle('Einstellungen', APP_VERSION);
   app.innerHTML=
+  `<div class="card dash" data-act="info"><h2>ℹ️ Info & Versionen<span>›</span></h2><div class="muted">Zeiterfassung ${APP_VERSION} · entwickelt von ${ENTWICKLER} in Kooperation mit ${PARTNER}</div></div>`+
   sec('s_arbeit','Arbeitszeit',`
     <div class="grid2">
       <div><label class="f">Soll pro Woche (Std.)</label><input inputmode="decimal" data-set="wochenSoll" value="${fmt(st.wochenSoll)}"></div>
@@ -1587,6 +1631,7 @@ const onClick=ev=>{
     case 'import': document.getElementById('impFile').click(); return;
     case 'csv': exportCSV(); return;
     case 'wertecopy': copyText(wertePrompt()); return;
+    case 'info': openInfo(); return;
     case 'kallast': if(S.kalLast){
       // aktuellen Stand der zuletzt gesendeten Tage nehmen (ältere Übertragungen: reine Datumszeilen ergänzen)
       S.kalLast = S.kalLastDays ? S.kalLastDays.map(kalLine).filter(Boolean).join('\n') : S.kalLast.split('\n').map(l=>/^\d\d\.\d\d\.\d{4}$/.test(l.trim())?l.trim()+'|-':l).join('\n'); save();
@@ -1668,6 +1713,7 @@ sheet.addEventListener('click',ev=>{
   if(t.dataset.tpl!==undefined){ readSheet(); const tp=S.settings.schichten[+t.dataset.tpl]; Object.assign(edit,{von:tp.von,bis:tp.bis,pause:tp.pause}); return drawSheet(); }
   switch(t.dataset.act){
     case 'close': rng=null; return closeSheet();
+    case 'info': return openInfo();
     case 'rsave': {
       readRange(); const tage=rangeDays();
       if(!tage.length) return toast('Keine Tage im Zeitraum');

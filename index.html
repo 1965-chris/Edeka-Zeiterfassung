@@ -224,7 +224,7 @@ details summary{cursor:pointer;padding:6px 0}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.12';
+const APP_VERSION = 'v2.13';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -1369,6 +1369,7 @@ function renderEinst(){
     <label class="f">Wenn Bemerkung enthält …</label><input data-kal="regelWort" value="${esc(k.regelWort)}">
     <label class="f">… dann dieser Ort</label><input data-kal="regelOrt" value="${esc(k.regelOrt)}">
     <div class="hint">Arbeit → Termin „Edeka“ mit Zeit, Ort und Bemerkung. Urlaub → ganztägig „Urlaub“. Frei, Ü-Abbau, Krank, Feiertag → Schicht wird gelöscht. Nicht markierte Arten (z. B. Sonderurlaub) bleiben unangetastet.</div>
+    <div class="hint">Übertragen werden nur Tage, die du in der App änderst. Alle anderen Termine im Kalender bleiben, wie sie sind – auch Schichten, die in der App noch fehlen.</div>
     <button class="btn small" data-act="kalweek" style="margin-top:10px">KW ${kw(curMon)} komplett senden</button>`, k.an?'an':'aus')
   +sec('s_werte','🔄 Rechenwerte (Steuer & Rente)',`
     <div class="muted">Stand ${WERTE?de2(WERTE.stand):'– (eingebaute Werte)'} · Steuertarife ${tJahre()[0]}–${tJahre().slice(-1)[0]} · Rentenwert ${eur(num(S.settings.rente.rentenwert))}</div>
@@ -1540,8 +1541,11 @@ const onClick=ev=>{
     case 'kalclear': if(confirm('Gesammelte Kalender-Änderungen verwerfen? Der Kalender wird dann nicht angepasst.')){ S.kalQ=[]; save(); renderKalBar(); } return;
     case 'kalweek': {
       if(!S.settings.kal.an) return toast('Erst „Kalender automatisch anpassen“ einschalten');
-      if(!confirm(`Alle Tage der KW ${kw(curMon)} an den Kalender senden? Edeka- und Urlaubstermine dieser Woche werden neu eingetragen.`)) return;
-      for(let i=0;i<7;i++){ const s=iso(addDays(curMon,i)); if(!S.kalQ.includes(s)) S.kalQ.push(s); }
+      // nur Tage mit Eintrag – leere Tage würden sonst die Schicht im Kalender löschen
+      const tage=[0,1,2,3,4,5,6].map(i=>iso(addDays(curMon,i))).filter(s=>S.days[s]);
+      if(!tage.length) return toast(`KW ${kw(curMon)} hat in der App keine Einträge – Kalender bleibt unverändert`);
+      if(!confirm(`${tage.length} eingetragene Tag${tage.length>1?'e':''} der KW ${kw(curMon)} an den Kalender senden? Edeka- und Urlaubstermine dieser Tage werden neu eingetragen. Tage ohne Eintrag in der App bleiben im Kalender unverändert.`)) return;
+      for(const s of tage) if(!S.kalQ.includes(s)) S.kalQ.push(s);
       sendKal(); return; }
     case 'mprev': curMonth=new Date(curMonth.getFullYear(),curMonth.getMonth()-1,1); break;
     case 'mnext': curMonth=new Date(curMonth.getFullYear(),curMonth.getMonth()+1,1); break;

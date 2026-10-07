@@ -224,7 +224,7 @@ details summary{cursor:pointer;padding:6px 0}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.14';
+const APP_VERSION = 'v2.15';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -1398,10 +1398,11 @@ function runShortcut(name, text){
   location.href='shortcuts://run-shortcut?name='+encodeURIComponent(name)+'&input=text&text='+encodeURIComponent(text);
 }
 /* Eine Zeile pro Tag:  TT.MM.JJJJ|Titel|Start|Ende|Ort|Notiz
-   nur Datum = an dem Tag Edeka/Urlaub löschen, nichts Neues eintragen */
+   TT.MM.JJJJ|- = an dem Tag Edeka/Urlaub löschen, nichts Neues eintragen
+   (der Zusatz „|-“ sorgt dafür, dass iOS die Zeile als Text und nicht als Datum liest) */
 function kalLine(s){
   const k=S.settings.kal, e=S.days[s], d=deDat(s), clean=x=>String(x||'').replace(/[|\r\n]+/g,' ').trim();
-  if(!e) return d;
+  if(!e) return d+'|-';
   if(!k.typen.includes(e.typ)) return null;
   if(e.typ==='arbeit'){
     if(!e.von||!e.bis) return null;
@@ -1413,7 +1414,7 @@ function kalLine(s){
     return [d,'Edeka',`${d} ${e.von}`,`${deDat(endD)} ${e.bis}`,clean(ort)||'EDEKA',info].join('|');
   }
   if(e.typ==='urlaub' && k.urlaubGanz) return `${d}|Urlaub`;
-  return d;
+  return d+'|-';
 }
 function commitKal(dates){
   const k=S.settings.kal; if(!k.an || !dates.length) return;
@@ -1423,10 +1424,10 @@ function commitKal(dates){
   if(k.sofort){ if(k.modus==='clip') sendKal(); else setTimeout(sendKal,350); }
 }
 function sendKal(){
-  const k=S.settings.kal, lines=S.kalQ.slice().sort().map(kalLine).filter(Boolean);
+  const k=S.settings.kal, tage=S.kalQ.slice().sort(), lines=tage.map(kalLine).filter(Boolean);
   S.kalQ=[]; save(); renderKalBar();
   if(!lines.length) return toast('Nichts für den Kalender zu tun');
-  S.kalLast=lines.join('\n'); save();
+  S.kalLastDays=tage; S.kalLast=lines.join('\n'); save();
   if(k.modus==='clip'){ copyText(S.kalLast); setTimeout(()=>toast('📋 Kopiert – jetzt 2× hinten aufs iPhone tippen',4500),60); return; }
   if(!k.name) return toast('Kein Kurzbefehl eingetragen');
   runShortcut(k.name, S.kalLast);
@@ -1575,7 +1576,10 @@ const onClick=ev=>{
     case 'import': document.getElementById('impFile').click(); return;
     case 'csv': exportCSV(); return;
     case 'wertecopy': copyText(wertePrompt()); return;
-    case 'kallast': if(S.kalLast){ copyText(S.kalLast); setTimeout(()=>toast('📋 Kopiert – jetzt 2× hinten aufs iPhone tippen',4500),60); } return;
+    case 'kallast': if(S.kalLast){
+      // aktuellen Stand der zuletzt gesendeten Tage nehmen (ältere Übertragungen: reine Datumszeilen ergänzen)
+      S.kalLast = S.kalLastDays ? S.kalLastDays.map(kalLine).filter(Boolean).join('\n') : S.kalLast.split('\n').map(l=>/^\d\d\.\d\d\.\d{4}$/.test(l.trim())?l.trim()+'|-':l).join('\n'); save();
+      copyText(S.kalLast); setTimeout(()=>toast('📋 Kopiert – jetzt 2× hinten aufs iPhone tippen',4500),60); } return;
     case 'range': openRange(); return;
   }
   render();

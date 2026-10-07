@@ -224,7 +224,7 @@ details summary{cursor:pointer;padding:6px 0}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.15';
+const APP_VERSION = 'v2.16';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -242,7 +242,7 @@ const TYPEN = {
 const DEFAULT = {
   settings:{
     sollTag:6.25, wochenSoll:37.5, startDatum:'', startSaldo:0, urlaubAnspruch:0, feiertageNRW:true, backupTage:30,
-    kal:{v:2, an:false, name:'Schicht löschen', sofort:false, urlaubGanz:true, modus:'app',
+    kal:{v:2, an:false, name:'Schicht löschen', sofort:false, urlaubGanz:true, abbauGanz:true, modus:'app',
          typen:['arbeit','frei','abbau','urlaub','krank','feiertag'],
          ort:'EDEKA Möller, Elsa-Neumann-Straße 6, 40789 Monheim am Rhein',
          regelWort:'Baumberg', regelOrt:'EDEKA Möller, Geschwister-Scholl-Straße 69'},
@@ -1287,6 +1287,7 @@ const HILFE={
          ['Rechengrößen','Rentenwert, Durchschnittsentgelte und KV-Zusatzbeitrag werden automatisch aktualisiert, solange „Automatisch aktualisieren“ an ist. Ein eigener Wert schaltet die Automatik aus.']],
   einst:[['Arbeitszeit','Wochensoll und Gutschrift pro Tag für Urlaub, Krank und Feiertag.'],
          ['Kalender','Abgleich mit dem iPhone-Kalender über den Kurzbefehl. Übertragen werden nur Tage, die du in der App änderst.'],
+         ['Ü-Abbau im Kalender','Damit Ü-Abbau-Tage als ganztägiger Termin „Ü-Abbau“ erscheinen, braucht der Kurzbefehl einmalig: 1. In Teil 1 die Regel <b>^(Edeka|Urlaub)$</b> ändern in <b>^(Edeka|Urlaub|Ü-Abbau)$</b>. 2. Unten (vor „Nichts“) einen Block wie beim Urlaub: „Text abgleichen“ mit <b>(?m)^.{10}(?=\|Ü-Abbau)</b> in Kurzbefehleingabe → „Mit jedem wiederholen“ → darin „Neues Ereignis“ „Ü-Abbau“, ganztägig, Kalender Christian, Start und Ende = Objekt wiederholen.'],
          ['Kalender unsichtbar (Rückseite tippen)','Einmal einrichten: 1. Im Kurzbefehl „Schicht löschen“ ganz oben im Block „Empfangen … Eingabe“ die Einstellung für <i>keine Eingabe</i> auf <b>„Zwischenablage abrufen“</b> stellen. 2. iPhone-Einstellungen → Bedienungshilfen → Tippen → Auf Rückseite tippen → Doppeltippen → „Schicht löschen“. 3. Hier unter Kalender „Übertragen über: Rückseite tippen“ wählen. Ab dann: „Senden“ tippen, zweimal hinten aufs iPhone tippen – fertig, ohne die App zu verlassen.'],
          ['Rechenwerte','Steuertarife und Rentenwerte kommen aus der Datei werte.json im Repo. Am 15. Januar und 15. Mai erinnert dich die App. Dann den Prüftext kopieren, in einen Claude-Chat einfügen und die Antwort in GitHub in werte.json einsetzen.'],
          ['Daten','Die Daten liegen nur auf diesem iPhone. Regelmäßig „Backup exportieren“ und in iCloud Drive sichern – die App erinnert dich daran.']]
@@ -1370,12 +1371,14 @@ function renderEinst(){
     <label class="f">Abgleichen bei</label>
     <div class="row">${['arbeit','frei','abbau','urlaub','krank','feiertag','sonder'].map(t=>`<button class="btn small ${k.typen.includes(t)?'on':''}" data-kaltyp="${t}">${TYPEN[t].name}</button>`).join('')}</div>
     <label class="f" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" data-kal="urlaubGanz" ${k.urlaubGanz?'checked':''}> Urlaub als ganztägigen Termin eintragen</label>
+    <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-kal="abbauGanz" ${k.abbauGanz?'checked':''}> Ü-Abbau als ganztägigen Termin „Ü-Abbau“ eintragen</label>
+    <div class="hint">Dafür braucht der Kurzbefehl den Teil für „Ü-Abbau“ (Anleitung: ❓ oben). Ohne ihn wird an Ü-Abbau-Tagen nur die Schicht gelöscht.</div>
     <label class="f">Ort der Schicht (Standard)</label><input data-kal="ort" value="${esc(k.ort)}">
     <label class="f">Wenn Bemerkung enthält …</label><input data-kal="regelWort" value="${esc(k.regelWort)}">
     <label class="f">… dann dieser Ort</label><input data-kal="regelOrt" value="${esc(k.regelOrt)}">
-    <div class="hint">Arbeit → Termin „Edeka“ mit Zeit, Ort und Bemerkung. Urlaub → ganztägig „Urlaub“. Frei, Ü-Abbau, Krank, Feiertag → Schicht wird gelöscht. Nicht markierte Arten (z. B. Sonderurlaub) bleiben unangetastet.</div>
+    <div class="hint">Arbeit → Termin „Edeka“ mit Zeit, Ort und Bemerkung. Urlaub → ganztägig „Urlaub“. Ü-Abbau → ganztägig „Ü-Abbau“. Frei, Krank, Feiertag → Schicht wird gelöscht. Nicht markierte Arten (z. B. Sonderurlaub) bleiben unangetastet.</div>
     <div class="hint">Übertragen werden nur Tage, die du in der App änderst. Alle anderen Termine im Kalender bleiben, wie sie sind – auch Schichten, die in der App noch fehlen.</div>
-    <button class="btn small" data-act="kalweek" style="margin-top:10px">KW ${kw(curMon)} komplett senden</button>`, k.an?'an':'aus')
+    <div class="row" style="margin-top:10px"><button class="btn small" data-act="kalweek">KW ${kw(curMon)} komplett senden</button>${(()=>{ const n=Object.entries(S.days).filter(([d,e])=>d>=iso(new Date())&&e.typ==='abbau').length; return n?`<button class="btn small" data-act="kalabbau">Künftige Ü-Abbau-Tage senden (${n})</button>`:''; })()}</div>`, k.an?'an':'aus')
   +sec('s_werte','🔄 Rechenwerte (Steuer & Rente)',`
     <div class="muted">Stand ${WERTE?de2(WERTE.stand):'– (eingebaute Werte)'} · Steuertarife ${tJahre()[0]}–${tJahre().slice(-1)[0]} · Rentenwert ${eur(num(S.settings.rente.rentenwert))}</div>
     <div class="hint">Die App lädt die Werte aus der Datei werte.json im Repo. Am 15. Januar und 15. Mai erinnert sie dich ans Prüfen.</div>
@@ -1414,6 +1417,7 @@ function kalLine(s){
     return [d,'Edeka',`${d} ${e.von}`,`${deDat(endD)} ${e.bis}`,clean(ort)||'EDEKA',info].join('|');
   }
   if(e.typ==='urlaub' && k.urlaubGanz) return `${d}|Urlaub`;
+  if(e.typ==='abbau' && k.abbauGanz) return `${d}|Ü-Abbau`;
   return d+'|-';
 }
 function commitKal(dates){
@@ -1549,6 +1553,13 @@ const onClick=ev=>{
     }
     case 'kalsend': sendKal(); return;
     case 'kalclear': if(confirm('Gesammelte Kalender-Änderungen verwerfen? Der Kalender wird dann nicht angepasst.')){ S.kalQ=[]; save(); renderKalBar(); } return;
+    case 'kalabbau': {
+      if(!S.settings.kal.an) return toast('Erst „Kalender automatisch anpassen“ einschalten');
+      const tage=Object.entries(S.days).filter(([d,e])=>d>=iso(new Date())&&e.typ==='abbau').map(([d])=>d);
+      if(!tage.length) return toast('Keine künftigen Ü-Abbau-Tage');
+      if(!confirm(`${tage.length} Ü-Abbau-Tag${tage.length>1?'e':''} an den Kalender senden? Dort wird jeweils die Schicht entfernt und „Ü-Abbau“ eingetragen.`)) return;
+      for(const s of tage) if(!S.kalQ.includes(s)) S.kalQ.push(s);
+      sendKal(); return; }
     case 'kalweek': {
       if(!S.settings.kal.an) return toast('Erst „Kalender automatisch anpassen“ einschalten');
       // nur Tage mit Eintrag – leere Tage würden sonst die Schicht im Kalender löschen

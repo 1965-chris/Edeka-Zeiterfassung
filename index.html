@@ -224,7 +224,7 @@ details summary{cursor:pointer;padding:6px 0}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.13';
+const APP_VERSION = 'v2.14';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -242,7 +242,7 @@ const TYPEN = {
 const DEFAULT = {
   settings:{
     sollTag:6.25, wochenSoll:37.5, startDatum:'', startSaldo:0, urlaubAnspruch:0, feiertageNRW:true, backupTage:30,
-    kal:{v:2, an:false, name:'Schicht löschen', sofort:false, urlaubGanz:true,
+    kal:{v:2, an:false, name:'Schicht löschen', sofort:false, urlaubGanz:true, modus:'app',
          typen:['arbeit','frei','abbau','urlaub','krank','feiertag'],
          ort:'EDEKA Möller, Elsa-Neumann-Straße 6, 40789 Monheim am Rhein',
          regelWort:'Baumberg', regelOrt:'EDEKA Möller, Geschwister-Scholl-Straße 69'},
@@ -363,7 +363,7 @@ function monat(y,m){
 /* ---------- UI-Zustand ---------- */
 let tab='start', curMon=monday(new Date()), curMonth=new Date(new Date().getFullYear(),new Date().getMonth(),1), curYear=new Date().getFullYear();
 const app=document.getElementById('app');
-function toast(t){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),1800);}
+function toast(t,ms){const el=document.getElementById('toast');el.textContent=t;el.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>el.classList.remove('show'),ms||1800);}
 
 function render(){
   document.querySelectorAll('.tabbar button').forEach(b=>b.classList.toggle('act',b.dataset.tab===tab || ((tab==='steuer'||tab==='ausw')&&b.dataset.tab==='jahr')));
@@ -1286,7 +1286,8 @@ const HILFE={
          ['Rente beantragen','Wann, wie, welche Formulare und Unterlagen, Kontakt zur Rentenversicherung.'],
          ['Rechengrößen','Rentenwert, Durchschnittsentgelte und KV-Zusatzbeitrag werden automatisch aktualisiert, solange „Automatisch aktualisieren“ an ist. Ein eigener Wert schaltet die Automatik aus.']],
   einst:[['Arbeitszeit','Wochensoll und Gutschrift pro Tag für Urlaub, Krank und Feiertag.'],
-         ['Kalender','Abgleich mit dem iPhone-Kalender über den Kurzbefehl.'],
+         ['Kalender','Abgleich mit dem iPhone-Kalender über den Kurzbefehl. Übertragen werden nur Tage, die du in der App änderst.'],
+         ['Kalender unsichtbar (Rückseite tippen)','Einmal einrichten: 1. Im Kurzbefehl „Schicht löschen“ ganz oben im Block „Empfangen … Eingabe“ die Einstellung für <i>keine Eingabe</i> auf <b>„Zwischenablage abrufen“</b> stellen. 2. iPhone-Einstellungen → Bedienungshilfen → Tippen → Auf Rückseite tippen → Doppeltippen → „Schicht löschen“. 3. Hier unter Kalender „Übertragen über: Rückseite tippen“ wählen. Ab dann: „Senden“ tippen, zweimal hinten aufs iPhone tippen – fertig, ohne die App zu verlassen.'],
          ['Rechenwerte','Steuertarife und Rentenwerte kommen aus der Datei werte.json im Repo. Am 15. Januar und 15. Mai erinnert dich die App. Dann den Prüftext kopieren, in einen Claude-Chat einfügen und die Antwort in GitHub in werte.json einsetzen.'],
          ['Daten','Die Daten liegen nur auf diesem iPhone. Regelmäßig „Backup exportieren“ und in iCloud Drive sichern – die App erinnert dich daran.']]
 };
@@ -1361,7 +1362,11 @@ function renderEinst(){
     <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-kal="an" ${k.an?'checked':''}> Kalender automatisch anpassen</label>
     <label class="f">Name des Kurzbefehls</label><input data-kal="name" value="${esc(k.name)}">
     <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-kal="sofort" ${k.sofort?'checked':''}> Jede Änderung sofort senden</label>
-    <div class="hint">Aus = Änderungen werden gesammelt und oben mit „Senden“ gemeinsam übertragen (nur ein Sprung in die Kurzbefehle-App).</div>
+    <div class="hint">Aus = Änderungen werden gesammelt und oben mit „Senden“ gemeinsam übertragen.</div>
+    <label class="f">Übertragen über</label>
+    <div class="row">${[['app','Kurzbefehle-App öffnen'],['clip','Rückseite tippen']].map(([m,l])=>`<button class="btn small ${(k.modus||'app')===m?'on':''}" data-kalmodus="${m}">${l}</button>`).join('')}</div>
+    <div class="hint">${(k.modus||'app')==='clip'?'„Senden“ kopiert die Änderungen. Dann zweimal hinten aufs iPhone tippen – der Kurzbefehl läuft im Hintergrund, du bleibst in der App. Einrichtung: ❓ oben.':'Die Kurzbefehle-App öffnet sich kurz, zurück mit „◀ Zeiten“ oben links. Unsichtbar geht es mit „Rückseite tippen“ – Einrichtung: ❓ oben.'}</div>
+    ${S.kalLast?`<button class="btn small" data-act="kallast" style="margin-top:8px">Letzte Übertragung nochmal kopieren</button>`:''}
     <label class="f">Abgleichen bei</label>
     <div class="row">${['arbeit','frei','abbau','urlaub','krank','feiertag','sonder'].map(t=>`<button class="btn small ${k.typen.includes(t)?'on':''}" data-kaltyp="${t}">${TYPEN[t].name}</button>`).join('')}</div>
     <label class="f" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" data-kal="urlaubGanz" ${k.urlaubGanz?'checked':''}> Urlaub als ganztägigen Termin eintragen</label>
@@ -1414,14 +1419,17 @@ function commitKal(dates){
   const k=S.settings.kal; if(!k.an || !dates.length) return;
   for(const s of dates) if(!S.kalQ.includes(s)) S.kalQ.push(s);
   save(); renderKalBar();
-  if(k.sofort) setTimeout(sendKal,350);
+  // Zwischenablage muss direkt beim Antippen beschrieben werden, die Kurzbefehle-App erst nach dem Neuzeichnen öffnen
+  if(k.sofort){ if(k.modus==='clip') sendKal(); else setTimeout(sendKal,350); }
 }
 function sendKal(){
   const k=S.settings.kal, lines=S.kalQ.slice().sort().map(kalLine).filter(Boolean);
   S.kalQ=[]; save(); renderKalBar();
   if(!lines.length) return toast('Nichts für den Kalender zu tun');
+  S.kalLast=lines.join('\n'); save();
+  if(k.modus==='clip'){ copyText(S.kalLast); setTimeout(()=>toast('📋 Kopiert – jetzt 2× hinten aufs iPhone tippen',4500),60); return; }
   if(!k.name) return toast('Kein Kurzbefehl eingetragen');
-  runShortcut(k.name, lines.join('\n'));
+  runShortcut(k.name, S.kalLast);
 }
 function renderKalBar(){
   const el=document.getElementById('kalbar'), q=S.kalQ||[];
@@ -1504,11 +1512,12 @@ document.querySelector('.tabbar').addEventListener('click',ev=>{const b=ev.targe
 document.getElementById('sheetBg').addEventListener('click',closeSheet);
 
 const onClick=ev=>{
-  const t=ev.target.closest('[data-act],[data-edit],[data-go],[data-coll],[data-fart],[data-fday],[data-kaltyp],[data-tpldel],[data-month],[data-stkl],[data-wk],[data-popid],[data-aendadd],[data-aenddel]'); if(!t) return;
+  const t=ev.target.closest('[data-act],[data-edit],[data-go],[data-coll],[data-fart],[data-fday],[data-kaltyp],[data-tpldel],[data-month],[data-stkl],[data-wk],[data-popid],[data-aendadd],[data-aenddel],[data-kalmodus]'); if(!t) return;
   if(t.dataset.go){ tab=t.dataset.go; render(); scrollTo(0,0); return; }
   if(t.dataset.coll){ const id=t.dataset.coll, c=t.closest('.coll'), auf=!c.classList.contains('open'); UI[id]=auf; uiSave(); c.classList.toggle('open',auf); return; }
   if(t.dataset.fart){ fill.art = fill.art===t.dataset.fart?null:t.dataset.fart; return render(); }
   if(t.dataset.fday){ const s=t.dataset.fday; fill.days = fill.days.includes(s)?fill.days.filter(x=>x!==s):[...fill.days,s]; return render(); }
+  if(t.dataset.kalmodus){ S.settings.kal.modus=t.dataset.kalmodus; save(); const y0=scrollY; render(); scrollTo(0,y0); return toast(t.dataset.kalmodus==='clip'?'Übertragen per Rückseite tippen':'Übertragen per Kurzbefehle-App'); }
   if(t.dataset.aendadd||t.dataset.aenddel){ const d=stY(curYear,true).d, y0=scrollY;
     if(t.dataset.aendadd){ const w=t.dataset.aendadd; d[w].aend=d[w].aend||[]; const nm=curYear===new Date().getFullYear()?Math.min(12,new Date().getMonth()+2):1; d[w].aend.push({ab:nm,b:''}); }
     else { const [w,i]=t.dataset.aenddel.split(':'); d[w].aend.splice(+i,1); }
@@ -1566,6 +1575,7 @@ const onClick=ev=>{
     case 'import': document.getElementById('impFile').click(); return;
     case 'csv': exportCSV(); return;
     case 'wertecopy': copyText(wertePrompt()); return;
+    case 'kallast': if(S.kalLast){ copyText(S.kalLast); setTimeout(()=>toast('📋 Kopiert – jetzt 2× hinten aufs iPhone tippen',4500),60); } return;
     case 'range': openRange(); return;
   }
   render();

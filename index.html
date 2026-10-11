@@ -228,7 +228,7 @@ details summary{cursor:pointer;padding:6px 0}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.18';
+const APP_VERSION = 'v2.19';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -1371,14 +1371,19 @@ function applySync(m){
 }
 const b64enc = s => { const b=new TextEncoder().encode(s); let bin=''; for(let i=0;i<b.length;i+=0x8000) bin+=String.fromCharCode.apply(null,b.subarray(i,i+0x8000)); return btoa(bin); };
 const b64dec = s => { const bin=atob(String(s).replace(/\s/g,'')); const b=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) b[i]=bin.charCodeAt(i); return new TextDecoder().decode(b); };
-function gh(method, pfad, body, accept){
-  return fetch(`https://api.github.com/repos/${encodeURIComponent(SY.owner)}/${encodeURIComponent(SY.repo)}${pfad}`, {method, cache:'no-store',
-    headers:{'Accept':accept||'application/vnd.github+json','Authorization':'Bearer '+SY.token,'X-GitHub-Api-Version':'2022-11-28', ...(body?{'Content-Type':'application/json'}:{})},
-    body: body?JSON.stringify(body):undefined});
+async function gh(method, pfad, body, accept){
+  const ctl=new AbortController(), timer=setTimeout(()=>ctl.abort(),20000);
+  try{
+    return await fetch(`https://api.github.com/repos/${encodeURIComponent(SY.owner)}/${encodeURIComponent(SY.repo)}${pfad}`, {method, cache:'no-store', signal:ctl.signal,
+      headers:{'Accept':accept||'application/vnd.github+json','Authorization':'Bearer '+SY.token, ...(body?{'Content-Type':'application/json'}:{})},
+      body: body?JSON.stringify(body):undefined});
+  }catch(e){ throw new Error(e.name==='AbortError' ? 'Keine Antwort von GitHub (Zeitüberschreitung)' : 'Keine Verbindung zu GitHub ('+(e.message||'Netzwerk')+')'); }
+  finally{ clearTimeout(timer); }
 }
 function ghFehler(r){
   if(r.status===401) return new Error('Schlüssel ungültig oder abgelaufen');
-  if(r.status===403||r.status===429) return new Error('GitHub-Limit erreicht – gleich nochmal versuchen');
+  if(r.status===403) return new Error('Kein Zugriff – beim Schlüssel „Contents: Read and write“ für dieses Repo prüfen (oder GitHub-Limit)');
+  if(r.status===429) return new Error('GitHub-Limit erreicht – gleich nochmal versuchen');
   if(r.status===404) return new Error('Repo nicht gefunden oder Schlüssel ohne Zugriff');
   return new Error('GitHub antwortet mit Fehler '+r.status);
 }
@@ -1396,7 +1401,10 @@ async function ghLesen(){
 }
 async function ghSchreiben(data, sha){
   const r=await gh('PUT', syPfad(), {message:`Sync ${geraetName()} ${new Date().toLocaleString('de-DE')}`, content:b64enc(JSON.stringify(data)), ...(sha?{sha}:{})});
-  if(r.status===409||r.status===422) return false;     // inzwischen von einem anderen Gerät geändert
+  if(r.status===409||r.status===422){                   // inzwischen von einem anderen Gerät geändert …
+    let msg=''; try{ msg=(await r.json()).message||''; }catch(e){}
+    if(/empty/i.test(msg)) throw new Error('Das Repo ist noch ganz leer – bitte in GitHub einmal eine Datei anlegen (z. B. „Add a README“)');
+    return false; }
   if(!r.ok) throw ghFehler(r);
   return true;
 }
@@ -1433,7 +1441,10 @@ function renderSyncBar(){
   el.innerHTML = syAktiv() && SY.err ? `<div class="kalbar sybar"><span>⚠️ Sync: ${esc(SY.err)}</span><button data-act="syncnow">Erneut</button></div>` : '';
 }
 async function syVerbinden(){
-  if(!SY.owner||!SY.repo||!SY.token) return toast('GitHub-Name, Repo und Schlüssel eintragen');
+  // Felder direkt auslesen – auch vorausgefüllte Werte, die nie geändert wurden
+  for(const k of ['owner','repo','token','name']){ const el=document.querySelector(`[data-sy="${k}"]`); if(el) SY[k]=el.value.trim(); }
+  if(!SY.repo) SY.repo='Zeiterfassung-Daten';
+  if(!SY.owner||!SY.token){ SY.err='Bitte GitHub-Name und Schlüssel eintragen'; sySave(); render(); return toast(SY.err,3500); }
   SY.owner=SY.owner.trim(); SY.repo=SY.repo.trim(); SY.token=SY.token.trim(); sySave();
   toast('Verbinde …');
   try{
@@ -1449,7 +1460,7 @@ async function syVerbinden(){
     } else if(g.data) applySync({...g.data});
     SY.an=true; SY.err=''; sySave(); syVerlauf(`verbunden (${geraetName()})`);
     await syncJetzt(true);
-  }catch(e){ SY.an=false; SY.err=e.message; sySave(); alert('Verbinden fehlgeschlagen:\n'+e.message); }
+  }catch(e){ SY.an=false; SY.err=e.message; sySave(); syVerlauf('Verbinden fehlgeschlagen: '+e.message); alert('Verbinden fehlgeschlagen:\n'+e.message); }
   render();
 }
 function syncSection(){
@@ -1468,7 +1479,9 @@ function syncSection(){
     <label class="f">Schlüssel (Token)</label><input type="password" data-sy="token" value="${esc(SY.token||'')}" placeholder="github_pat_…" autocomplete="off">
     <label class="f">Name dieses Geräts</label><input data-sy="name" value="${esc(SY.name||'')}" placeholder="${esc(geraetName())}">
     <button class="btn primary" data-act="syncverbinden" style="width:100%;margin-top:12px">☁️ Verbinden</button>
-    <div class="hint">Der Schlüssel bleibt nur auf diesem Gerät und ist nicht im Backup enthalten.</div>`;
+    ${SY.err?`<div class="neg" style="margin-top:8px;font-weight:700">⚠️ ${esc(SY.err)}</div>`:''}
+    <div class="hint">Der Schlüssel bleibt nur auf diesem Gerät und ist nicht im Backup enthalten.</div>
+    ${(SY.verlauf||[]).length?`<details style="margin-top:8px"><summary class="muted">Verlauf</summary>${SY.verlauf.map(v=>`<div class="muted" style="font-size:12px;padding:3px 0">${dtKurz(v.t)} · ${esc(v.txt)}</div>`).join('')}</details>`:''}`;
   return sec('s_sync','☁️ Synchronisation', body, verb?(SY.err?'⚠️':'an'):'aus');
 }
 
@@ -1476,6 +1489,7 @@ function syncSection(){
    Bei jeder neuen Version: APP_VERSION erhöhen, oben in VERSIONEN einen Eintrag ergänzen und in sw.js den CACHE-Namen anpassen. */
 const ENTWICKLER='Christian Mättig', PARTNER='Claude (Anthropic)';
 const VERSIONEN=[
+  {v:'2.19', d:'11.10.2026', t:['Synchronisation: klarere Fehlermeldungen direkt im Einrichten-Bereich','Verbindung zu GitHub robuster (Zeitlimit, keine Zusatz-Kopfzeile)']},
   {v:'2.18', d:'11.10.2026', t:['☁️ Synchronisation zwischen iPhone, iPad und Laptop über ein privates GitHub-Repo','Vergangene Tage werden nicht mehr an den Kalender geschickt']},
   {v:'2.17', d:'07.10.2026', t:['Hinweis „Was ist neu“ nach jedem Update','Info-Seite mit allen Versionen (⚙️ → Info & Versionen)']},
   {v:'2.16', d:'07.10.2026', t:['Ü-Abbau als ganztägiger Termin im Kalender','Knopf „Künftige Ü-Abbau-Tage senden“']},

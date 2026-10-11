@@ -197,6 +197,8 @@ details summary{cursor:pointer;padding:6px 0}
 .log{padding:9px 0;border-bottom:1px solid var(--line);font-size:14px}
 .log:last-child{border-bottom:0}
 .log .k{color:var(--krank);font-weight:700}
+.sybar{background:#fdecea;color:#a12a1f}
+@media (prefers-color-scheme: dark){ .sybar{background:#3a1714;color:#ff9b8f} }
 .aend{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) 40px;gap:8px;align-items:center;margin-top:8px}
 .aend .btn{height:44px;padding:0}
 .helpbtn{font-weight:800;font-size:19px}
@@ -207,7 +209,7 @@ details summary{cursor:pointer;padding:6px 0}
 </style>
 </head>
 <body>
-<header class="hdr"><div class="top"><div><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></div><div style="display:flex;gap:8px;align-items:center"><button class="todaybtn" id="todayBtn" hidden>Heute</button><button class="iconbtn" id="backBtn" aria-label="Schließen" hidden>✕</button><button class="iconbtn helpbtn" id="helpBtn" aria-label="Hilfe">?</button><button class="iconbtn" id="setBtn" aria-label="Einstellungen">⚙️</button></div></div><div id="navbar"></div><div id="kalbar"></div></header>
+<header class="hdr"><div class="top"><div><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></div><div style="display:flex;gap:8px;align-items:center"><button class="todaybtn" id="todayBtn" hidden>Heute</button><button class="iconbtn" id="backBtn" aria-label="Schließen" hidden>✕</button><button class="iconbtn helpbtn" id="helpBtn" aria-label="Hilfe">?</button><button class="iconbtn" id="setBtn" aria-label="Einstellungen">⚙️</button></div></div><div id="navbar"></div><div id="kalbar"></div><div id="syncbar"></div></header>
 <main id="app"></main>
 
 <nav class="tabbar">
@@ -226,7 +228,7 @@ details summary{cursor:pointer;padding:6px 0}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.17';
+const APP_VERSION = 'v2.18';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -271,6 +273,8 @@ function load(){
   if(!altKal.v){ const k=S.settings.kal; k.v=2; k.typen=[...DEFAULT.settings.kal.typen]; delete k.urlaubAn; delete k.urlaubName; }
   S.settings.steuer = Object.assign(structuredClone(DEFAULT.settings.steuer), S.settings.steuer||{});
   S.days = S.days||{}; S.monate = S.monate||{}; S.kalQ = S.kalQ||[]; S.steuer = S.steuer||{}; S.log = S.log||[]; S.erinn = S.erinn||{}; if(!S.wcStart) S.wcStart=iso(new Date());
+  S.syncT = S.syncT||{days:{},monate:{},sec:{}};
+  SNAP = snapshot();
 }
 /* UI-Zustand (aufgeklappte Bereiche) – nur Komfort */
 let UI={}; try{ UI=JSON.parse(localStorage.getItem('zeiterfassung-ui'))||{}; }catch(e){ UI={}; }
@@ -288,7 +292,9 @@ function setDay(s,e){
   return ch;
 }
 function save(){
+  track();
   try{ localStorage.setItem(KEY, JSON.stringify(S)); }catch(e){ toast('Speichern fehlgeschlagen!'); }
+  syncBald();
 }
 
 /* ---------- Helfer ---------- */
@@ -369,7 +375,7 @@ function toast(t,ms){const el=document.getElementById('toast');el.textContent=t;
 
 function render(){
   document.querySelectorAll('.tabbar button').forEach(b=>b.classList.toggle('act',b.dataset.tab===tab || ((tab==='steuer'||tab==='ausw')&&b.dataset.tab==='jahr')));
-  renderKalBar();
+  renderKalBar(); renderSyncBar();
   ({start:renderStart,woche:renderWoche,monat:renderMonat,jahr:renderJahr,steuer:renderSteuer,ausw:renderAusw,rente:renderRente,einst:renderEinst})[tab]();
   document.getElementById('setBtn').classList.toggle('on',tab==='einst');
 }
@@ -1293,6 +1299,7 @@ const HILFE={
          ['Kalender','Abgleich mit dem iPhone-Kalender über den Kurzbefehl. Übertragen werden nur Tage, die du in der App änderst.'],
          ['Ü-Abbau im Kalender','Damit Ü-Abbau-Tage als ganztägiger Termin „Ü-Abbau“ erscheinen, braucht der Kurzbefehl einmalig: 1. In Teil 1 die Regel <b>^(Edeka|Urlaub)$</b> ändern in <b>^(Edeka|Urlaub|Ü-Abbau)$</b>. 2. Unten (vor „Nichts“) einen Block wie beim Urlaub: „Text abgleichen“ mit <b>(?m)^.{10}(?=\|Ü-Abbau)</b> in Kurzbefehleingabe → „Mit jedem wiederholen“ → darin „Neues Ereignis“ „Ü-Abbau“, ganztägig, Kalender Christian, Start und Ende = Objekt wiederholen.'],
          ['Kalender unsichtbar (Rückseite tippen)','Einmal einrichten: 1. Im Kurzbefehl „Schicht löschen“ ganz oben im Block „Empfangen … Eingabe“ die Einstellung für <i>keine Eingabe</i> auf <b>„Zwischenablage abrufen“</b> stellen. 2. iPhone-Einstellungen → Bedienungshilfen → Tippen → Auf Rückseite tippen → Doppeltippen → „Schicht löschen“. 3. Hier unter Kalender „Übertragen über: Rückseite tippen“ wählen. Ab dann: „Senden“ tippen, zweimal hinten aufs iPhone tippen – fertig, ohne die App zu verlassen.'],
+         ['☁️ Synchronisation','Einmal einrichten: 1. Auf github.com ein neues Repo „Zeiterfassung-Daten“ anlegen und dabei <b>Private</b> wählen. 2. Unter Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → „Generate new token“: Repository access „Only select repositories“ → Zeiterfassung-Daten, bei Permissions <b>Contents: Read and write</b>. Den Schlüssel kopieren (er wird nur einmal angezeigt). 3. Hier GitHub-Name, Repo und Schlüssel eintragen → „Verbinden“. Auf jedem weiteren Gerät dasselbe eintragen und „Daten übernehmen“ wählen. Danach gleicht die App beim Öffnen und nach jeder Änderung selbst ab – die neuere Änderung gewinnt.'],
          ['Rechenwerte','Steuertarife und Rentenwerte kommen aus der Datei werte.json im Repo. Am 15. Januar und 15. Mai erinnert dich die App. Dann den Prüftext kopieren, in einen Claude-Chat einfügen und die Antwort in GitHub in werte.json einsetzen.'],
          ['Daten','Die Daten liegen nur auf diesem iPhone. Regelmäßig „Backup exportieren“ und in iCloud Drive sichern – die App erinnert dich daran.']]
 };
@@ -1306,10 +1313,170 @@ function openHilfe(){
 }
 
 
+/* ---------- Synchronisation über ein privates GitHub-Repo ----------
+   Zugangsdaten bleiben nur auf dem Gerät (eigener Speicher, nicht im Backup).
+   Jede Änderung an Tag / Monat / Bereich bekommt einen Zeitstempel (auch Löschungen),
+   beim Abgleich gewinnt die neuere Änderung. Hochgeladen wird nur nach erfolgreichem Abruf. */
+const SKEY='zeiterfassung-sync', SYNC_SEC=['settings','urlaubJahr','steuer','erinn'], KAL_LOKAL=['an','modus','sofort'];
+let SY={}; try{ SY=JSON.parse(localStorage.getItem(SKEY))||{}; }catch(e){ SY={}; }
+function sySave(){ try{ localStorage.setItem(SKEY, JSON.stringify(SY)); }catch(e){} }
+const geraetName = () => SY.name || (/iPhone/.test(navigator.userAgent) ? 'iPhone' : (/iPad/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints>1)) ? 'iPad' : 'Computer');
+const syAktiv = () => !!(SY.an && SY.token && SY.owner && SY.repo);
+function settingsOhneLokal(st){ const c=JSON.parse(JSON.stringify(st||{})); if(c.kal) for(const k of KAL_LOKAL) delete c.kal[k]; return c; }
+function snapshot(){ return JSON.parse(JSON.stringify({days:S.days, monate:S.monate, settings:settingsOhneLokal(S.settings), urlaubJahr:S.urlaubJahr||{}, steuer:S.steuer||{}, erinn:S.erinn||{}})); }
+let SNAP=null;
+function track(){
+  S.syncT = S.syncT || {}; const T=S.syncT; T.days=T.days||{}; T.monate=T.monate||{}; T.sec=T.sec||{};
+  if(!SNAP){ SNAP=snapshot(); return; }
+  const now=Date.now(), cur=snapshot();
+  for(const part of ['days','monate']){ const a=cur[part], b=SNAP[part];
+    for(const k of new Set([...Object.keys(a),...Object.keys(b)])) if(JSON.stringify(a[k])!==JSON.stringify(b[k])) T[part][k]=now; }
+  for(const s of SYNC_SEC) if(JSON.stringify(cur[s])!==JSON.stringify(SNAP[s])) T.sec[s]=now;
+  SNAP=cur;
+}
+function syncDaten(){ return {app:'zeiterfassung', format:1, geraet:geraetName(), gespeichert:new Date().toISOString(),
+  days:S.days, monate:S.monate, settings:settingsOhneLokal(S.settings), urlaubJahr:S.urlaubJahr||{}, steuer:S.steuer||{}, erinn:S.erinn||{}, log:S.log||[], syncT:S.syncT||{days:{},monate:{},sec:{}}}; }
+function mergeSync(L,R){
+  const LT=L.syncT||{}, RT=R.syncT||{}, T={days:{},monate:{},sec:{}}, out={app:'zeiterfassung', format:1};
+  for(const part of ['days','monate']){
+    const a=L[part]||{}, b=R[part]||{}, lt=LT[part]||{}, rt=RT[part]||{}, res={};
+    for(const k of new Set([...Object.keys(a),...Object.keys(b),...Object.keys(lt),...Object.keys(rt)])){
+      const tl=lt[k]||0, tr=rt[k]||0;
+      const v = tr>tl ? b[k] : tl>tr ? a[k] : (k in a ? a[k] : b[k]);   // gleich alt: eigener Stand, sonst der andere
+      if(v!==undefined && v!==null) res[k]=v;
+      if(tl||tr) T[part][k]=Math.max(tl,tr);
+    }
+    out[part]=res;
+  }
+  for(const s of SYNC_SEC){ const tl=(LT.sec||{})[s]||0, tr=(RT.sec||{})[s]||0;
+    out[s] = (tr>tl ? R[s] : L[s]) ?? L[s] ?? R[s] ?? {}; if(tl||tr) T.sec[s]=Math.max(tl,tr); }
+  const seen=new Set(), log=[]; for(const x of [...(L.log||[]),...(R.log||[])]){ const key=x.t+'|'+x.d; if(!seen.has(key)){ seen.add(key); log.push(x); } }
+  log.sort((x,y)=>x.t-y.t); out.log=log.slice(-800); out.syncT=T;
+  return out;
+}
+/* Vergleich unabhängig von der Reihenfolge der Schlüssel */
+const canon = v => Array.isArray(v) ? '['+v.map(canon).join(',')+']' : (v && typeof v==='object') ? '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+canon(v[k])).join(',')+'}' : JSON.stringify(v===undefined?null:v);
+const inhalt = d => canon([d.days,d.monate,d.settings,d.urlaubJahr,d.steuer,d.erinn,d.log,d.syncT]);
+/* Abgeglichenen Stand übernehmen – ohne neue Zeitstempel; geänderte künftige Tage gehen in den Kalender-Stapel */
+function applySync(m){
+  const alt=S.days, heute=iso(new Date()), lokalKal={};
+  for(const k of KAL_LOKAL) lokalKal[k]=S.settings.kal[k];
+  const neu = {...S, days:m.days||{}, monate:m.monate||{}, settings:m.settings||S.settings, urlaubJahr:m.urlaubJahr||{}, steuer:m.steuer||{}, erinn:m.erinn||{}, log:m.log||[], syncT:m.syncT||{days:{},monate:{},sec:{}}};
+  neu.settings = JSON.parse(JSON.stringify(neu.settings)); neu.settings.kal = Object.assign({}, neu.settings.kal||{}, lokalKal);
+  if(S.settings.kal.an){ const q=new Set(S.kalQ||[]);
+    for(const k of new Set([...Object.keys(alt),...Object.keys(neu.days)])) if(k>=heute && JSON.stringify(alt[k])!==JSON.stringify(neu.days[k])) q.add(k);
+    neu.kalQ=[...q]; }
+  try{ localStorage.setItem(KEY, JSON.stringify(neu)); }catch(e){ throw new Error('Speichern auf dem Gerät fehlgeschlagen'); }
+  load();   // normalisiert und setzt den Vergleichsstand neu
+}
+const b64enc = s => { const b=new TextEncoder().encode(s); let bin=''; for(let i=0;i<b.length;i+=0x8000) bin+=String.fromCharCode.apply(null,b.subarray(i,i+0x8000)); return btoa(bin); };
+const b64dec = s => { const bin=atob(String(s).replace(/\s/g,'')); const b=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) b[i]=bin.charCodeAt(i); return new TextDecoder().decode(b); };
+function gh(method, pfad, body, accept){
+  return fetch(`https://api.github.com/repos/${encodeURIComponent(SY.owner)}/${encodeURIComponent(SY.repo)}${pfad}`, {method, cache:'no-store',
+    headers:{'Accept':accept||'application/vnd.github+json','Authorization':'Bearer '+SY.token,'X-GitHub-Api-Version':'2022-11-28', ...(body?{'Content-Type':'application/json'}:{})},
+    body: body?JSON.stringify(body):undefined});
+}
+function ghFehler(r){
+  if(r.status===401) return new Error('Schlüssel ungültig oder abgelaufen');
+  if(r.status===403||r.status===429) return new Error('GitHub-Limit erreicht – gleich nochmal versuchen');
+  if(r.status===404) return new Error('Repo nicht gefunden oder Schlüssel ohne Zugriff');
+  return new Error('GitHub antwortet mit Fehler '+r.status);
+}
+const syPfad = () => '/contents/'+encodeURIComponent(SY.pfad||'zeiterfassung-daten.json');
+async function ghLesen(){
+  const r=await gh('GET', syPfad());
+  if(r.status===404) return {sha:null, data:null};
+  if(!r.ok) throw ghFehler(r);
+  const j=await r.json(); let txt;
+  if(j.content && j.encoding==='base64') txt=b64dec(j.content);
+  else { const r2=await gh('GET', syPfad(), null, 'application/vnd.github.raw+json'); if(!r2.ok) throw ghFehler(r2); txt=await r2.text(); }
+  let data; try{ data=JSON.parse(txt); }catch(e){ throw new Error('Datei auf GitHub ist beschädigt – nichts überschrieben'); }
+  if(!data || data.app!=='zeiterfassung' || !data.days) throw new Error('Datei auf GitHub gehört nicht zur Zeiterfassung – nichts überschrieben');
+  return {sha:j.sha, data};
+}
+async function ghSchreiben(data, sha){
+  const r=await gh('PUT', syPfad(), {message:`Sync ${geraetName()} ${new Date().toLocaleString('de-DE')}`, content:b64enc(JSON.stringify(data)), ...(sha?{sha}:{})});
+  if(r.status===409||r.status===422) return false;     // inzwischen von einem anderen Gerät geändert
+  if(!r.ok) throw ghFehler(r);
+  return true;
+}
+function syVerlauf(txt){ SY.verlauf=[{t:Date.now(), txt}, ...(SY.verlauf||[])].slice(0,20); sySave(); }
+let syLaeuft=false, syNochmal=false, syTimer=null;
+function syncBald(){ if(!syAktiv() || SY.auto===false) return; clearTimeout(syTimer); syTimer=setTimeout(()=>syncJetzt(false),4000); }
+async function syncJetzt(manuell){
+  if(!syAktiv()){ if(manuell) toast('Synchronisation ist nicht eingerichtet'); return false; }
+  if(syLaeuft){ syNochmal=true; return false; }
+  syLaeuft=true; renderSyncBar();
+  let ok=false;
+  try{
+    for(let v=0; v<3 && !ok; v++){
+      const g=await ghLesen();                         // erst holen …
+      const lokal=syncDaten(), m = g.data ? mergeSync(lokal, g.data) : mergeSync(lokal, {days:{}});
+      const hier = inhalt(m)!==inhalt(lokal), dort = !g.data || inhalt(m)!==inhalt(g.data);
+      if(hier) applySync(m);
+      if(dort){ m.geraet=geraetName(); m.gespeichert=new Date().toISOString(); if(!await ghSchreiben(m, g.sha)) continue; }   // … dann schreiben
+      ok=true;
+      const nT=g.data?Object.keys(m.days).length:0;
+      syVerlauf(hier&&dort ? 'abgeglichen ↕' : hier ? 'Änderungen geholt ↓' : dort ? 'Änderungen hochgeladen ↑' : 'alles aktuell ✓');
+      SY.lastOk=Date.now(); SY.err=''; sySave();
+      if(hier) softRender(); else if(tab==='einst') softRender();
+      if(manuell) toast(hier?'☁️ Neue Daten geholt':'☁️ Alles aktuell');
+    }
+    if(!ok) throw new Error('Mehrfach gleichzeitig geändert – bitte nochmal');
+  }catch(e){ SY.err=e.message||String(e); syVerlauf('Fehler: '+SY.err); sySave(); if(manuell) toast('Sync: '+SY.err,4000); }
+  syLaeuft=false; renderSyncBar();
+  if(syNochmal){ syNochmal=false; syncBald(); }
+  return ok;
+}
+function renderSyncBar(){
+  const el=document.getElementById('syncbar'); if(!el) return;
+  el.innerHTML = syAktiv() && SY.err ? `<div class="kalbar sybar"><span>⚠️ Sync: ${esc(SY.err)}</span><button data-act="syncnow">Erneut</button></div>` : '';
+}
+async function syVerbinden(){
+  if(!SY.owner||!SY.repo||!SY.token) return toast('GitHub-Name, Repo und Schlüssel eintragen');
+  SY.owner=SY.owner.trim(); SY.repo=SY.repo.trim(); SY.token=SY.token.trim(); sySave();
+  toast('Verbinde …');
+  try{
+    const r=await gh('GET','');
+    if(!r.ok) throw ghFehler(r);
+    const info=await r.json();
+    if(!info.private) throw new Error('Das Repo ist öffentlich! Bitte in GitHub auf „Private“ stellen – sonst wären deine Daten für alle sichtbar.');
+    const g=await ghLesen();
+    if(g.data && Object.keys(S.days).length){
+      const n=Object.keys(g.data.days||{}).length;
+      try{ localStorage.setItem('zeiterfassung-vor-sync', JSON.stringify({app:'zeiterfassung',version:APP_VERSION,...S})); }catch(e){}
+      if(confirm(`Auf GitHub liegen schon Daten (${n} Tage, zuletzt von ${g.data.geraet||'einem Gerät'}).\n\nOK = diese Daten übernehmen – empfohlen für ein weiteres Gerät. Der Stand hier wird ersetzt (vorher gesichert).\n\nAbbrechen = beide Stände zusammenführen.`)) applySync({...g.data});
+    } else if(g.data) applySync({...g.data});
+    SY.an=true; SY.err=''; sySave(); syVerlauf(`verbunden (${geraetName()})`);
+    await syncJetzt(true);
+  }catch(e){ SY.an=false; SY.err=e.message; sySave(); alert('Verbinden fehlgeschlagen:\n'+e.message); }
+  render();
+}
+function syncSection(){
+  const verb=syAktiv(), zeit=t=>t?dtKurz(t):'–';
+  const body = verb ? `
+    <div class="muted">Verbunden mit <b>${esc(SY.owner)}/${esc(SY.repo)}</b> · dieses Gerät: <b>${esc(geraetName())}</b></div>
+    <div class="${SY.err?'neg':'pos'}" style="margin-top:6px;font-weight:700">${SY.err?`⚠️ ${esc(SY.err)}`:`✓ Zuletzt abgeglichen: ${zeit(SY.lastOk)}`}</div>
+    <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-sy="auto" ${SY.auto!==false?'checked':''}> Automatisch abgleichen (beim Öffnen und nach Änderungen)</label>
+    <div class="row" style="margin-top:10px"><button class="btn small" data-act="syncnow">☁️ Jetzt abgleichen</button><button class="btn small danger" data-act="synctrennen">Trennen</button></div>
+    <details style="margin-top:10px"><summary class="muted">Verlauf</summary>${(SY.verlauf||[]).map(v=>`<div class="muted" style="font-size:12px;padding:3px 0">${dtKurz(v.t)} · ${esc(v.txt)}</div>`).join('')||'<div class="muted">–</div>'}</details>
+    ${localStorage.getItem('zeiterfassung-vor-sync')?`<button class="btn small" data-act="syncvor" style="margin-top:8px">Stand vor dem ersten Abgleich herunterladen</button>`:''}`
+  : `
+    <div class="muted">Gleicht deine Daten über ein <b>privates</b> GitHub-Repo zwischen iPhone, iPad und Laptop ab. Anleitung: ❓ oben.</div>
+    <label class="f">GitHub-Name</label><input data-sy="owner" value="${esc(SY.owner||'')}" placeholder="z. B. 1965-chris" autocapitalize="off" autocorrect="off">
+    <label class="f">Privates Repo</label><input data-sy="repo" value="${esc(SY.repo||'Zeiterfassung-Daten')}" autocapitalize="off" autocorrect="off">
+    <label class="f">Schlüssel (Token)</label><input type="password" data-sy="token" value="${esc(SY.token||'')}" placeholder="github_pat_…" autocomplete="off">
+    <label class="f">Name dieses Geräts</label><input data-sy="name" value="${esc(SY.name||'')}" placeholder="${esc(geraetName())}">
+    <button class="btn primary" data-act="syncverbinden" style="width:100%;margin-top:12px">☁️ Verbinden</button>
+    <div class="hint">Der Schlüssel bleibt nur auf diesem Gerät und ist nicht im Backup enthalten.</div>`;
+  return sec('s_sync','☁️ Synchronisation', body, verb?(SY.err?'⚠️':'an'):'aus');
+}
+
 /* ---------- Info & Versionen ----------
    Bei jeder neuen Version: APP_VERSION erhöhen, oben in VERSIONEN einen Eintrag ergänzen und in sw.js den CACHE-Namen anpassen. */
 const ENTWICKLER='Christian Mättig', PARTNER='Claude (Anthropic)';
 const VERSIONEN=[
+  {v:'2.18', d:'11.10.2026', t:['☁️ Synchronisation zwischen iPhone, iPad und Laptop über ein privates GitHub-Repo','Vergangene Tage werden nicht mehr an den Kalender geschickt']},
   {v:'2.17', d:'07.10.2026', t:['Hinweis „Was ist neu“ nach jedem Update','Info-Seite mit allen Versionen (⚙️ → Info & Versionen)']},
   {v:'2.16', d:'07.10.2026', t:['Ü-Abbau als ganztägiger Termin im Kalender','Knopf „Künftige Ü-Abbau-Tage senden“']},
   {v:'2.15', d:'07.10.2026', t:['Kalender: Löschzeilen werden sicher erkannt','„Letzte Übertragung nochmal kopieren“ mit aktuellem Stand']},
@@ -1423,6 +1590,7 @@ function renderEinst(){
     <div class="hint">Arbeit → Termin „Edeka“ mit Zeit, Ort und Bemerkung. Urlaub → ganztägig „Urlaub“. Ü-Abbau → ganztägig „Ü-Abbau“. Frei, Krank, Feiertag → Schicht wird gelöscht. Nicht markierte Arten (z. B. Sonderurlaub) bleiben unangetastet.</div>
     <div class="hint">Übertragen werden nur Tage, die du in der App änderst. Alle anderen Termine im Kalender bleiben, wie sie sind – auch Schichten, die in der App noch fehlen.</div>
     <div class="row" style="margin-top:10px"><button class="btn small" data-act="kalweek">KW ${kw(curMon)} komplett senden</button>${(()=>{ const n=Object.entries(S.days).filter(([d,e])=>d>=iso(new Date())&&e.typ==='abbau').length; return n?`<button class="btn small" data-act="kalabbau">Künftige Ü-Abbau-Tage senden (${n})</button>`:''; })()}</div>`, k.an?'an':'aus')
+  +syncSection()
   +sec('s_werte','🔄 Rechenwerte (Steuer & Rente)',`
     <div class="muted">Stand ${WERTE?de2(WERTE.stand):'– (eingebaute Werte)'} · Steuertarife ${tJahre()[0]}–${tJahre().slice(-1)[0]} · Rentenwert ${eur(num(S.settings.rente.rentenwert))}</div>
     <div class="hint">Die App lädt die Werte aus der Datei werte.json im Repo. Am 15. Januar und 15. Mai erinnert sie dich ans Prüfen.</div>
@@ -1465,7 +1633,7 @@ function kalLine(s){
   return d+'|-';
 }
 function commitKal(dates){
-  const k=S.settings.kal; if(!k.an || !dates.length) return;
+  const k=S.settings.kal, heute=iso(new Date()); dates=dates.filter(s=>s>=heute); if(!k.an || !dates.length) return;
   for(const s of dates) if(!S.kalQ.includes(s)) S.kalQ.push(s);
   save(); renderKalBar();
   // Zwischenablage muss direkt beim Antippen beschrieben werden, die Kurzbefehle-App erst nach dem Neuzeichnen öffnen
@@ -1632,6 +1800,10 @@ const onClick=ev=>{
     case 'csv': exportCSV(); return;
     case 'wertecopy': copyText(wertePrompt()); return;
     case 'info': openInfo(); return;
+    case 'syncnow': syncJetzt(true); return;
+    case 'syncverbinden': syVerbinden(); return;
+    case 'synctrennen': if(confirm('Synchronisation auf diesem Gerät trennen? Die Daten hier und auf GitHub bleiben erhalten, der Schlüssel wird von diesem Gerät gelöscht.')){ SY={owner:SY.owner, repo:SY.repo, name:SY.name}; sySave(); render(); toast('Getrennt'); } return;
+    case 'syncvor': { const t=localStorage.getItem('zeiterfassung-vor-sync'); if(t) download('zeiterfassung-vor-sync.json',t,'application/json'); return; }
     case 'kallast': if(S.kalLast){
       // aktuellen Stand der zuletzt gesendeten Tage nehmen (ältere Übertragungen: reine Datumszeilen ergänzen)
       S.kalLast = S.kalLastDays ? S.kalLastDays.map(kalLine).filter(Boolean).join('\n') : S.kalLast.split('\n').map(l=>/^\d\d\.\d\d\.\d{4}$/.test(l.trim())?l.trim()+'|-':l).join('\n'); save();
@@ -1664,6 +1836,7 @@ app.addEventListener('change',ev=>{
   if(el.dataset.rde) S.settings.rente.auto=false;
   if(el.dataset.rente){ const k=el.dataset.rente, v=el.value.trim(); S.settings.rente[k] = el.type==='date' ? v : (v===''?'':num(v)); save(); softRender(); toast('Gespeichert'); return; }
   if(el.dataset.rde){ const v=el.value.trim(); if(v==='') delete S.settings.rente.de[el.dataset.rde]; else S.settings.rente.de[el.dataset.rde]=num(v); save(); softRender(); toast('Gespeichert'); return; }
+  if(el.dataset.sy){ const k=el.dataset.sy; SY[k] = el.type==='checkbox' ? el.checked : el.value.trim(); sySave(); if(el.type==='checkbox'){ toast(el.checked?'Automatisch an':'Automatisch aus'); if(el.checked) syncBald(); } return; }
   if(el.dataset.erl){ setErledigt(el.dataset.erl, el.checked); toast(el.checked?'Erledigt ✓':'Wieder offen'); softRender(); return; }
   if(el.dataset.aend){ const [w,i,f]=el.dataset.aend.split(':'), a=stY(curYear,true).d[w].aend[+i]; if(!a) return;
     a[f] = f==='ab' ? +el.value : (el.value.trim()===''?'':numDE(el.value)); save(); softRender(); toast('Gespeichert'); return; }
@@ -1765,6 +1938,9 @@ pop.addEventListener('change',ev=>{
 document.getElementById('popBg').addEventListener('click',()=>{ if(popItem && !popItem.manuell && !popItem.info) snooze(popItem.id,1); closePop(); });
 ladeWerte();
 setTimeout(checkPop,800);
+if(syAktiv() && SY.auto!==false) setTimeout(()=>syncJetzt(false),1200);
+let syZuletzt=0;
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && syAktiv() && SY.auto!==false && Date.now()-syZuletzt>15000){ syZuletzt=Date.now(); syncJetzt(false); } });
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') setTimeout(checkPop,600); });
 if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>

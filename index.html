@@ -81,6 +81,7 @@ input[type=checkbox]{width:22px;height:22px;min-height:0;-webkit-appearance:auto
 .grid2>*,.grid3>*{min-width:0}
 .grid2,.grid3{align-items:end}
 .hint{font-size:12px;color:var(--muted);margin-top:6px}
+.atlink{text-decoration:underline dotted;text-underline-offset:3px;cursor:pointer}
 .hdr .top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px}
 #navbar:empty{display:none}
 #navbar .card{margin:10px 0 0}
@@ -228,7 +229,7 @@ details summary{cursor:pointer;padding:6px 0}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.20';
+const APP_VERSION = 'v2.21';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -245,7 +246,7 @@ const TYPEN = {
 /* ---------- Daten ---------- */
 const DEFAULT = {
   settings:{
-    sollTag:6.25, wochenSoll:37.5, startDatum:'', startSaldo:0, urlaubAnspruch:0, feiertageNRW:true, backupTage:30,
+    sollTag:6.25, wochenSoll:37.5, startDatum:'', startSaldo:0, urlaubAnspruch:0, feiertageNRW:true, backupTage:30, tageWoche:5, urlaubWerktage:true,
     kal:{v:2, an:false, name:'Schicht löschen', sofort:false, urlaubGanz:true, abbauGanz:true, modus:'app',
          typen:['arbeit','frei','abbau','urlaub','krank','feiertag'],
          ort:'EDEKA Möller, Elsa-Neumann-Straße 6, 40789 Monheim am Rhein',
@@ -654,25 +655,77 @@ function countdownCard(klein){
     ${klein?`<h2>🏖️ Rente am ${de2(r.beginn)} <span>›</span></h2>`:'<div class="muted">Noch bis zur Rente</div>'}
     <div class="big">${tage.toLocaleString('de-DE')} Tage</div>
     <div style="font-weight:600;margin-top:4px">${x.y} Jahre · ${x.m} Monate · ${x.d} Tage</div>
-    <div class="muted" style="margin-top:4px">≈ ${arbT.toLocaleString('de-DE')} Arbeitstage · ${Math.floor(tage/7).toLocaleString('de-DE')} Wochen</div>
+    <div class="muted" style="margin-top:4px"><span class="atlink" data-act="atinfo">≈ ${arbT.toLocaleString('de-DE')} Arbeitstage ⓘ</span> · ${Math.floor(tage/7).toLocaleString('de-DE')} Wochen</div>
     ${prozent!=null?`<div class="bar"><div style="width:${prozent.toFixed(1)}%"></div></div><div class="hint">${fmt(prozent)} % des Arbeitslebens geschafft 💪</div>`:''}
   </div>`;
 }
-/* Arbeitstage bis zum Rentenbeginn: eingetragene Tage zählen genau (Arbeit = 1, sonst 0),
-   noch nicht eingetragene Werktage (Mo–Sa ohne Feiertag) mit deinem Anteil aus den 12 vollen Monaten
-   vor dem aktuellen Monat. Der Anteil bleibt so einen Monat lang gleich → die Zahl sinkt pro Arbeitstag um 1. */
-function arbeitstageBis(b){
+/* Arbeitstage bis zum Rentenbeginn
+   – eingetragene Tage zählen genau (Arbeit = 1, alles andere = 0)
+   – nicht eingetragene Tage: jede Woche (Mo–Sa) hat „tageWoche“ Arbeitstage (Standard 5) und 1 freien Tag;
+     ein Feiertag Mo–Sa kostet einen Arbeitstag; ein eingetragenes „Frei“ in der Woche ist der freie Tag
+   – noch nicht eingetragener Resturlaub je Jahr wird abgezogen
+     (Urlaub in Werktagen: 6 Urlaubstage = 1 Woche = 5 Arbeitstage) – nur von den noch offenen Tagen desselben Jahres.
+     Ist ein Jahr schon komplett eingetragen, gilt das Eingetragene. */
+function urlaubSoll(y, b){
+  const u=(S.urlaubJahr||{})[y]; if(u!=null && u!=='') return {ans:num(u), eigen:true};
+  const a=num(S.settings.urlaubAnspruch);
+  if(b && y===b.getFullYear()) return {ans:Math.round(a*b.getMonth()/12), eigen:false, anteilig:true};
+  return {ans:a, eigen:false};
+}
+function arbeitsPlan(b){
   const n=new Date(), heute=new Date(n.getFullYear(),n.getMonth(),n.getDate());
-  let arb=0, ws=0;
-  for(let d=new Date(n.getFullYear(),n.getMonth()-12,1), ende=new Date(n.getFullYear(),n.getMonth(),1); d<ende; d=addDays(d,1)){
-    const s=iso(d), e=S.days[s]; if(d.getDay()===0 || feiertag(s) || !e) continue; ws++; if(e.typ==='arbeit') arb++; }
-  const q = ws>100 ? arb/ws : 0.72;
-  let summe=0;
-  for(let d=new Date(heute); d<b; d=addDays(d,1)){ const s=iso(d), e=S.days[s];
-    if(e){ if(e.typ==='arbeit') summe++; continue; }
-    if(d.getDay()===0 || feiertag(s)) continue;
-    summe+=q; }
-  return Math.round(summe);
+  const tw=Math.min(6,Math.max(1,num(S.settings.tageWoche)||5)), freiWoche=6-tw;
+  const f = S.settings.urlaubWerktage!==false ? tw/6 : 1;
+  const istFt=(s,e)=> (e && e.typ==='feiertag') || !!feiertag(s);
+  const J={}, jahr=y=>J[y]=J[y]||{y, fest:0, offen:0, urlaub:0, ft:0};
+  for(let mo=monday(heute); mo<b; mo=addDays(mo,7)){
+    let F=0, frueherOffen=0, plaetze=0, plaetzeBisB=0; const offen=[];
+    for(let i=0;i<7;i++){
+      const d=addDays(mo,i), s=iso(d), e=S.days[s], drin = d>=heute && d<b;
+      if(drin && e && e.typ==='arbeit') jahr(d.getFullYear()).fest++;
+      if(i===6) continue;                                   // Sonntag
+      if(istFt(s,e)){ if(drin) jahr(d.getFullYear()).ft++; continue; }
+      plaetze++; if(d>=b) continue; plaetzeBisB++;
+      if(e){ if(e.typ==='frei') F++; continue; }
+      if(d<heute) frueherOffen++; else offen.push(d);
+    }
+    const nochFrei = Math.max(0, freiWoche*plaetzeBisB/Math.max(1,plaetze) - F - frueherOffen);
+    const k = offen.length ? Math.max(0, offen.length-nochFrei)/offen.length : 0;
+    for(const d of offen) jahr(d.getFullYear()).offen += k;
+  }
+  const letztesJahr = addDays(b,-1).getFullYear();
+  for(let y=heute.getFullYear(); y<=letztesJahr; y++){
+    const j=jahr(y), u=urlaubSoll(y,b);
+    j.ans=u.ans; j.anteilig=!!u.anteilig;
+    j.genommen=Object.entries(S.days).filter(([k,e])=>k.startsWith(y+'-') && e.typ==='urlaub').length;
+    j.rest=Math.max(0, j.ans-j.genommen);
+    j.urlaub=Math.min(j.offen, j.rest*f); j.ohnePlatz = j.rest*f - j.urlaub > 0.5;
+  }
+  const jahre=Object.values(J).sort((a,c)=>a.y-c.y);
+  jahre.forEach(j=>j.summe=j.fest+j.offen-j.urlaub);
+  return {jahre, summe:Math.max(0,Math.round(jahre.reduce((x,j)=>x+j.summe,0))), tw, f};
+}
+function arbeitstageBis(b){ return arbeitsPlan(b).summe; }
+function openArbeitstage(){
+  const r=S.settings.rente; if(!r.beginn) return;
+  const b=parse(r.beginn), P=arbeitsPlan(b), rj=addDays(b,-1).getFullYear(), uR=urlaubSoll(rj,b), st=S.settings;
+  const z=x=>Math.round(x).toLocaleString('de-DE');
+  const rows=P.jahre.map(j=>`<tr><td><b>${j.y}</b></td><td>${z(j.fest)}</td><td>${z(j.offen)}</td><td>${j.urlaub?'−'+z(j.urlaub):'–'}</td><td><b>${z(j.summe)}</b></td></tr>`).join('');
+  const uz=P.jahre.filter(j=>j.ans!=null).map(j=>`<div class="blk"><span><b>${j.y}</b>${j.anteilig?' (anteilig)':''}</span><span style="flex:1;text-align:right">Anspruch ${j.ans} · eingetragen ${j.genommen} · offen <b>${j.rest}</b>${j.ohnePlatz?'<br><span class="muted">keine freien Tage mehr im Jahr – es zählt, was eingetragen ist</span>':''}</span></div>`).join('');
+  edit=null;
+  sheet.innerHTML=`<div class="nav" style="margin-bottom:4px"><b>🧮 Arbeitstage bis zur Rente</b><button class="iconbtn" data-act="close">✕</button></div>
+    <div style="text-align:center;margin:6px 0 10px"><div class="big">≈ ${z(P.summe)}</div><div class="muted">ab heute bis ${de2(iso(addDays(b,-1)))}</div></div>
+    <table class="calc2"><tr class="muted"><td>Jahr</td><td>einge&shy;tragen</td><td>ge&shy;plant</td><td>Urlaub</td><td>Summe</td></tr>${rows}
+      <tr class="sum"><td>Gesamt</td><td>${z(P.jahre.reduce((x,j)=>x+j.fest,0))}</td><td>${z(P.jahre.reduce((x,j)=>x+j.offen,0))}</td><td>−${z(P.jahre.reduce((x,j)=>x+j.urlaub,0))}</td><td>${z(P.summe)}</td></tr></table>
+    <div class="hint"><b>eingetragen</b> = deine eingetragenen Arbeitstage ab heute (zählen genau). <b>geplant</b> = Tage ohne Eintrag: ${P.tw} Arbeitstage pro Woche, Feiertage fallen weg. <b>Urlaub</b> = noch nicht eingetragener Resturlaub${P.f<1?` (${P.tw===5?'6 Urlaubstage = 5 Arbeitstage':'in Werktagen'})`:''}.</div>
+    <h2 style="margin-top:16px">Urlaub</h2>${uz}
+    <h2 style="margin-top:16px">Annahmen</h2>
+    <label class="f">Arbeitstage pro Woche</label><input inputmode="numeric" data-at="tageWoche" value="${st.tageWoche||5}">
+    <label class="f">Urlaubsanspruch pro Jahr (Tage)</label><input inputmode="numeric" data-at="urlaubAnspruch" value="${st.urlaubAnspruch||''}">
+    <label class="f">Urlaub im Rentenjahr ${rj} (anteilig)</label><input inputmode="numeric" data-at="uj" data-y="${rj}" value="${uR.eigen?uR.ans:''}" placeholder="${uR.ans} (automatisch ${b.getMonth()}/12)">
+    <label style="display:flex;gap:10px;align-items:center;margin-top:14px;font-size:14px"><input type="checkbox" style="width:22px;height:22px;flex:none" data-at="urlaubWerktage" ${st.urlaubWerktage!==false?'checked':''}> <span>Urlaub zählt in Werktagen (Mo–Sa): eine Woche Urlaub = 6 Urlaubstage</span></label>
+    <div class="hint">Die Zahl ändert sich nur noch, wenn du eine Woche anders einträgst als geplant – z. B. ein zusätzlicher freier Tag (−1) oder ein Arbeitstag mehr (+1) – und natürlich mit jedem geschafften Arbeitstag.</div>`;
+  sheet.classList.add('open'); document.getElementById('sheetBg').classList.add('open');
 }
 function tageText(n){ return n===0?'heute':n===1?'morgen':n===2?'übermorgen':`in ${n} Tagen`; }
 const FREI=['frei','abbau','feiertag'];
@@ -733,7 +786,7 @@ function counterHero(){
     <div class="rimg">${stechuhrSVG(`Noch ${tage.toLocaleString('de-DE')} Tage!`)}</div>
     <div style="font-weight:700;margin-top:6px">🏖️ Rente am ${de2(r.beginn)}</div>
     <div style="font-weight:600;margin-top:2px">${x.y} Jahre · ${x.m} Monate · ${x.d} Tage</div>
-    <div class="muted">${Math.floor(tage/7).toLocaleString('de-DE')} Wochen · ≈ ${arbT.toLocaleString('de-DE')} Arbeitstage</div>
+    <div class="muted">${Math.floor(tage/7).toLocaleString('de-DE')} Wochen · <span class="atlink" data-act="atinfo">≈ ${arbT.toLocaleString('de-DE')} Arbeitstage ⓘ</span></div>
     ${prozent!=null?`<div class="bar" style="height:12px;margin-top:10px"><div style="width:${prozent.toFixed(1)}%"></div></div><div class="hint" style="margin-top:4px">${fmt(prozent)} % des Arbeitslebens geschafft 💪</div>`:''}
   </div>`;
 }
@@ -1292,7 +1345,7 @@ function setErledigt(id,an){ S.erinn=S.erinn||{}; const z=S.erinn[id]=S.erinn[id
 const SEITE={start:'Start',woche:'Woche',monat:'Monat',jahr:'Jahr',ausw:'Auswertung',steuer:'Steuer-Check',rente:'Rente',einst:'Einstellungen'};
 const HILFE={
   start:[['Countdown','Die drei Zähler zeigen den nächsten freien Wochentag, den nächsten Urlaub (nur wenn einer eingetragen ist) und die Tage bis zur Rente.'],
-         ['≈ Arbeitstage','Schon eingetragene Tage zählen genau. Für die Zeit danach rechnet die App mit deinem Anteil an Arbeitstagen aus den letzten 12 vollen Monaten. Die Zahl sinkt mit jedem Arbeitstag um 1; am Monatsanfang wird der Anteil neu berechnet, dann kann sie um ein paar Tage springen.'],
+         ['≈ Arbeitstage','Eingetragene Tage zählen genau. Für Tage ohne Eintrag rechnet die App mit 5 Arbeitstagen pro Woche, ohne Feiertage und abzüglich deines noch nicht eingetragenen Urlaubs. Die Zahl sinkt mit jedem Arbeitstag um 1 und ändert sich sonst nur, wenn eine Woche anders aussieht als geplant (z. B. ein zusätzlicher freier Tag). Antippen zeigt die Rechnung je Jahr und die Annahmen.'],
          ['Übersicht','Nach links wischen: heute, Woche, Überstundenkonto, Resturlaub und die nächsten Einträge. Eine Karte antippen öffnet den passenden Bereich.'],
          ['Hinweise','Wird ein Schritt im Renten-Fahrplan fällig oder ist ein Backup dran, erscheint beim Öffnen der App ein Hinweisfenster.']],
   woche:[['Tag eintragen','Einen Tag antippen, die Art wählen (Arbeit, Frei, Urlaub, Krank …) und bei Arbeit eine Schicht-Vorlage oder eigene Zeiten. Bemerkung z. B. „Baumberg“.'],
@@ -1514,6 +1567,7 @@ function syncSection(){
    Bei jeder neuen Version: APP_VERSION erhöhen, oben in VERSIONEN einen Eintrag ergänzen und in sw.js den CACHE-Namen anpassen. */
 const ENTWICKLER='Christian Mättig', PARTNER='Claude (Anthropic)';
 const VERSIONEN=[
+  {v:'2.21', d:'14.10.2026', t:['Arbeitstage bis zur Rente nach Plan: 5 Tage pro Woche, Feiertage, Urlaub 36 Tage (Rentenjahr anteilig) – keine Hochrechnung mehr','„≈ Arbeitstage“ antippen: Rechnung je Jahr und Annahmen zum Ändern']},
   {v:'2.20', d:'14.10.2026', t:['Arbeitstage bis zur Rente genauer: eingetragene Tage zählen exakt, der Rest nach deinem Anteil der letzten 12 Monate – die Zahl sinkt jetzt pro Arbeitstag um 1','Countdown aktualisiert sich bei neuem Tag, auch wenn die App im Hintergrund offen war','Die Stechuhr im Bild zeigt die echte Uhrzeit']},
   {v:'2.19', d:'11.10.2026', t:['Synchronisation: klarere Fehlermeldungen direkt im Einrichten-Bereich','Verbindung zu GitHub robuster (Zeitlimit, keine Zusatz-Kopfzeile)']},
   {v:'2.18', d:'11.10.2026', t:['☁️ Synchronisation zwischen iPhone, iPad und Laptop über ein privates GitHub-Repo','Vergangene Tage werden nicht mehr an den Kalender geschickt']},
@@ -1840,6 +1894,7 @@ const onClick=ev=>{
     case 'csv': exportCSV(); return;
     case 'wertecopy': copyText(wertePrompt()); return;
     case 'info': openInfo(); return;
+    case 'atinfo': openArbeitstage(); return;
     case 'syncnow': syncJetzt(true); return;
     case 'syncverbinden': syVerbinden(); return;
     case 'synctrennen': if(confirm('Synchronisation auf diesem Gerät trennen? Die Daten hier und auf GitHub bleiben erhalten, der Schlüssel wird von diesem Gerät gelöscht.')){ SY={owner:SY.owner, repo:SY.repo, name:SY.name}; sySave(); render(); toast('Getrennt'); } return;
@@ -1953,7 +2008,16 @@ sheet.addEventListener('click',ev=>{
   }
 });
 sheet.addEventListener('input',()=>{ if(rng){ readRange(); const c=document.getElementById('rCalc'); if(c) c.textContent=`${rangeDays().length} Tage als ${TYPEN[rng.typ].name}`; return; } if(!edit) return; readSheet(); const c=document.getElementById('eCalc'); if(c) c.textContent=(edit.typ==='arbeit'?'':'Gutschrift ')+fmt(stunden(edit))+' Std.'; });
-sheet.addEventListener('change',()=>sheet.dispatchEvent(new Event('input')));
+sheet.addEventListener('change',ev=>{
+  const el=ev.target;
+  if(el.dataset && el.dataset.at){ const k=el.dataset.at, v=el.value.trim();
+    if(k==='urlaubWerktage') S.settings.urlaubWerktage=el.checked;
+    else if(k==='uj'){ S.urlaubJahr=S.urlaubJahr||{}; if(v==='') delete S.urlaubJahr[el.dataset.y]; else S.urlaubJahr[el.dataset.y]=num(v); }
+    else if(k==='tageWoche') S.settings.tageWoche=Math.min(6,Math.max(1,num(v)||5));
+    else S.settings[k]=num(v);
+    save(); render(); openArbeitstage(); toast('Gespeichert'); return; }
+  sheet.dispatchEvent(new Event('input'));
+});
 
 /* ---------- Start ---------- */
 load();

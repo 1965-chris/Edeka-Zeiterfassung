@@ -63,12 +63,14 @@ main{padding:0 16px 16px;max-width:640px;margin:0 auto}
 .chip{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;color:#fff;background:var(--accent)}
 .chip.urlaub{background:var(--urlaub)} .chip.feiertag{background:var(--feiertag)} .chip.krank{background:var(--krank)}
 .chip.frei{background:var(--frei)} .chip.sonder{background:var(--sonder)} .chip.abbau{background:var(--abbau)}
+.chip.ugeplant{background:transparent;color:var(--urlaub);box-shadow:inset 0 0 0 1.5px var(--urlaub)}
 .chip.ghost{background:transparent;color:var(--muted);border:1px dashed var(--line)}
 .hol{font-size:11px;color:var(--feiertag)}
 .row{display:flex;gap:8px;flex-wrap:wrap}
 .btn{border:0;border-radius:12px;padding:11px 14px;font-size:15px;font-weight:600;background:var(--accent-soft);color:var(--accent)}
 .btn.primary{background:var(--accent);color:#fff}
 .btn.danger{background:transparent;color:var(--minus)}
+.btn.primary.danger{background:var(--minus);color:#fff}
 .btn.small{padding:7px 11px;font-size:13px}
 .btn.on{background:var(--accent);color:#fff}
 .btn:disabled{opacity:.45}
@@ -229,7 +231,7 @@ details summary{cursor:pointer;padding:6px 0}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.21';
+const APP_VERSION = 'v2.22';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -237,18 +239,21 @@ const TYPEN = {
   arbeit:   {name:'Arbeit',     gutschrift:false},
   frei:     {name:'Frei',       gutschrift:false},
   urlaub:   {name:'Urlaub',     gutschrift:true},
+  ugeplant: {name:'U geplant',  gutschrift:true},
   feiertag: {name:'Feiertag',   gutschrift:true},
   krank:    {name:'Krank',      gutschrift:true},
   sonder:   {name:'Sonderurl.', gutschrift:true},
   abbau:    {name:'Ü-Abbau',    gutschrift:false}
 };
+/* „U geplant“ = Urlaub, der noch nicht genehmigt ist – zählt überall wie Urlaub */
+const istUrlaub = e => !!e && (e.typ==='urlaub' || e.typ==='ugeplant');
 
 /* ---------- Daten ---------- */
 const DEFAULT = {
   settings:{
     sollTag:6.25, wochenSoll:37.5, startDatum:'', startSaldo:0, urlaubAnspruch:0, feiertageNRW:true, backupTage:30, tageWoche:5, urlaubWerktage:true,
     kal:{v:2, an:false, name:'Schicht löschen', sofort:false, urlaubGanz:true, abbauGanz:true, modus:'app',
-         typen:['arbeit','frei','abbau','urlaub','krank','feiertag'],
+         typen:['arbeit','frei','abbau','urlaub','ugeplant','krank','feiertag'],
          ort:'EDEKA Möller, Elsa-Neumann-Straße 6, 40789 Monheim am Rhein',
          regelWort:'Baumberg', regelOrt:'EDEKA Möller, Geschwister-Scholl-Straße 69'},
     rente:{regel:'', beginn:'', frei:'', versBeginn:'', infoStand:'', infoEP:'', infoPrognose:'', infoRW:'', epExtra:'',
@@ -272,6 +277,7 @@ function load(){
   { const k=S.settings.kal; if(k.ort==='EDEKA Möller, Geschwister-Scholl-Straße 69' && k.regelOrt==='EDEKA Möller, Elsa-Neumann-Straße 6, 40789 Monheim am Rhein'){ k.ort=DEFAULT.settings.kal.ort; k.regelOrt=DEFAULT.settings.kal.regelOrt; } }
   { const alt=(S.settings.rente)||{}; S.settings.rente=Object.assign(structuredClone(DEFAULT.settings.rente), alt); S.settings.rente.de=Object.assign({}, DEFAULT.settings.rente.de, alt.de||{}); }
   if(!altKal.v){ const k=S.settings.kal; k.v=2; k.typen=[...DEFAULT.settings.kal.typen]; delete k.urlaubAn; delete k.urlaubName; }
+  { const k=S.settings.kal; if((k.v||0)<3){ if(k.typen.includes('urlaub') && !k.typen.includes('ugeplant')) k.typen.splice(k.typen.indexOf('urlaub')+1,0,'ugeplant'); k.v=3; } }
   S.settings.steuer = Object.assign(structuredClone(DEFAULT.settings.steuer), S.settings.steuer||{});
   S.days = S.days||{}; S.monate = S.monate||{}; S.kalQ = S.kalQ||[]; S.steuer = S.steuer||{}; S.log = S.log||[]; S.erinn = S.erinn||{}; if(!S.wcStart) S.wcStart=iso(new Date());
   S.syncT = S.syncT||{days:{},monate:{},sec:{}};
@@ -363,7 +369,7 @@ function monat(y,m){
   const p=`${y}-${pad(m+1)}-`;
   for(const [k,e] of Object.entries(S.days)){
     if(!k.startsWith(p)) continue;
-    const h=stunden(e); r.std+=h; r[e.typ]=(r[e.typ]||0)+1;
+    const h=stunden(e); r.std+=h; r[e.typ]=(r[e.typ]||0)+1; if(e.typ==='ugeplant') r.urlaub++;
     if(zuschlagP(e)) r.zuschlag+=h;
   }
   return r;
@@ -426,7 +432,7 @@ function kurz(e){
   return TYPEN[e.typ].name;
 }
 function fillCard(mo){
-  const arts=[...S.settings.schichten.map((t,i)=>({k:'tpl:'+i,n:t.name})),{k:'frei',n:'Frei'},{k:'abbau',n:'Ü-Abbau'},{k:'urlaub',n:'Urlaub'},{k:'krank',n:'Krank'}];
+  const arts=[...S.settings.schichten.map((t,i)=>({k:'tpl:'+i,n:t.name})),{k:'frei',n:'Frei'},{k:'abbau',n:'Ü-Abbau'},{k:'urlaub',n:'Urlaub'},{k:'ugeplant',n:'U geplant'},{k:'krank',n:'Krank'},{k:'del',n:'🗑 Löschen'}];
   let tage='';
   for(let i=0;i<7;i++){ const d=addDays(mo,i), s=iso(d);
     tage+=`<button data-fday="${s}" class="${fill.days.includes(s)?'on':''}"><b>${WT[d.getDay()]}</b>${pad(d.getDate())}.<span>${feiertag(s)?'🎉':esc(kurz(S.days[s]))}</span></button>`; }
@@ -437,8 +443,8 @@ function fillCard(mo){
     <label class="f">2. Welche Tage?</label>
     <div class="days7">${tage}</div>
     <div class="row" style="margin-top:6px"><button class="btn small" data-act="fillmosa">Mo–Sa</button><button class="btn small" data-act="fillnone">Auswahl leeren</button></div>
-    <button class="btn primary" data-act="fillgo" style="width:100%;margin-top:12px" ${!fill.art||!n?'disabled':''}>${n?`Für ${n} Tag${n>1?'e':''} übernehmen`:'Tage antippen'}</button>
-    <div class="hint">Vorhandene Einträge der gewählten Tage werden ersetzt. Eine Bemerkung (z. B. Baumberg) bleibt bei Schichten erhalten.</div>
+    <button class="btn primary ${fill.art==='del'?'danger':''}" data-act="fillgo" style="width:100%;margin-top:12px" ${!fill.art||!n?'disabled':''}>${n?(fill.art==='del'?`${n} Tag${n>1?'e':''} löschen`:`Für ${n} Tag${n>1?'e':''} übernehmen`):'Tage antippen'}</button>
+    <div class="hint">${fill.art==='del'?'Die Einträge der gewählten Tage werden gelöscht – ist der Kalender-Abgleich an, auch die Termine im Kalender.':'Vorhandene Einträge der gewählten Tage werden ersetzt. Eine Bemerkung (z. B. Baumberg) bleibt bei Schichten erhalten.'}</div>
     <button class="btn" data-act="range" style="width:100%;margin-top:12px">📅 Längeren Zeitraum eintragen…</button>`);
 }
 
@@ -572,7 +578,7 @@ function renderJahr(){
     <div class="stat"><div class="v ${saldo>=0?'pos':'neg'}">${fmtS(saldo)}</div><div class="l">${kLabel}</div></div>
   </div>
   ${(()=>{ const sc=steuerCalc(y), r=Math.round(sc.rest), h=sc.iB||sc.pB; const au=Object.entries(S.days).filter(([k])=>k.startsWith(y+'-')), cnt=t=>au.filter(([,e])=>e.typ===t).length, nl=(S.log||[]).filter(x=>x.d.startsWith(y+'-')).length;
-    return `<div class="card dash" data-go="ausw"><h2>📋 Auswertung ${y}<span>›</span></h2><div class="muted">Urlaub ${cnt('urlaub')} · Frei ${cnt('frei')} · Ü-Abbau ${cnt('abbau')} · SU ${cnt('sonder')}${nl?` · ✎ ${nl} Änderung${nl>1?'en':''}`:''}</div></div><div class="card dash" data-go="steuer"><h2>🧾 Steuer-Check ${y}<span>›</span></h2><div class="${!h||Math.abs(r)<25?'muted':r>0?'neg':'pos'}" style="font-weight:${h?700:400}">${h?`voraussichtlich ${ergText(r)}`:'Nachzahlung oder Erstattung? Einkommensteuer schätzen'}</div></div>`; })()}
+    return `<div class="card dash" data-go="ausw"><h2>📋 Auswertung ${y}<span>›</span></h2><div class="muted">Urlaub ${cnt('urlaub')+cnt('ugeplant')} · Frei ${cnt('frei')} · Ü-Abbau ${cnt('abbau')} · SU ${cnt('sonder')}${nl?` · ✎ ${nl} Änderung${nl>1?'en':''}`:''}</div></div><div class="card dash" data-go="steuer"><h2>🧾 Steuer-Check ${y}<span>›</span></h2><div class="${!h||Math.abs(r)<25?'muted':r>0?'neg':'pos'}" style="font-weight:${h?700:400}">${h?`voraussichtlich ${ergText(r)}`:'Nachzahlung oder Erstattung? Einkommensteuer schätzen'}</div></div>`; })()}
   <div class="card"><table>
     <thead><tr><th>Monat</th><th>Std.</th><th>Br./h</th><th>Ne./h</th><th>Url.</th></tr></thead>
     <tbody>${rows}</tbody>
@@ -697,7 +703,7 @@ function arbeitsPlan(b){
   for(let y=heute.getFullYear(); y<=letztesJahr; y++){
     const j=jahr(y), u=urlaubSoll(y,b);
     j.ans=u.ans; j.anteilig=!!u.anteilig;
-    j.genommen=Object.entries(S.days).filter(([k,e])=>k.startsWith(y+'-') && e.typ==='urlaub').length;
+    j.genommen=Object.entries(S.days).filter(([k,e])=>k.startsWith(y+'-') && istUrlaub(e)).length;
     j.rest=Math.max(0, j.ans-j.genommen);
     j.urlaub=Math.min(j.offen, j.rest*f); j.ohnePlatz = j.rest*f - j.urlaub > 0.5;
   }
@@ -748,15 +754,15 @@ function freiCounter(){
 function urlaubCounter(){
   const now=new Date(), heute=new Date(now.getFullYear(),now.getMonth(),now.getDate());
   const block=(start)=>{ // zusammenhängender Urlaub ab start
-    let urlaub=0, last=start;
+    let urlaub=0, offen=0, last=start;
     for(let d=start;;d=addDays(d,1)){ const s=iso(d), e=S.days[s];
-      if(e?.typ==='urlaub'){ urlaub++; last=d; continue; }
+      if(istUrlaub(e)){ urlaub++; if(e.typ==='ugeplant') offen++; last=d; continue; }
       if(d.getDay()===0 || istFrei(s)) continue;
       break; }
-    return {urlaub,last};
+    return {urlaub,offen,last};
   };
   // gerade im Urlaub?
-  if(S.days[iso(heute)]?.typ==='urlaub'){
+  if(istUrlaub(S.days[iso(heute)])){
     const b=block(heute), rest=Math.round((b.last-heute)/864e5);
     return `<div class="card cd"><div class="ic">😎</div>
       <div class="tx"><b>Du hast Urlaub!</b><div class="muted">bis ${WT[b.last.getDay()]} ${ddmm(b.last)}</div></div>
@@ -764,10 +770,10 @@ function urlaubCounter(){
   }
   for(let i=1;i<=400;i++){
     const d=addDays(heute,i), s=iso(d);
-    if(S.days[s]?.typ==='urlaub'){
+    if(istUrlaub(S.days[s])){
       const b=block(d);
       return `<div class="card cd dash" data-go="woche"><div class="ic">🌴</div>
-        <div class="tx"><b>Nächster Urlaub</b><div class="muted">${ddmm(d)}–${ddmm(b.last)}${b.last.getFullYear()} · ${b.urlaub} Urlaubstag${b.urlaub>1?'e':''}</div></div>
+        <div class="tx"><b>Nächster Urlaub</b><div class="muted">${ddmm(d)}–${ddmm(b.last)}${b.last.getFullYear()} · ${b.urlaub} Urlaubstag${b.urlaub>1?'e':''}${b.offen?' · noch nicht genehmigt':''}</div></div>
         <div class="num"><b>${i}</b><span>${i===1?'Tag':'Tage'}</span></div></div>`;
     }
   }
@@ -818,7 +824,7 @@ function renderStart(){
   const mo=monday(heute), w=woche(mo), kt=konto(mo);
   const y=heute.getFullYear(); S.urlaubJahr=S.urlaubJahr||{};
   const ans = S.urlaubJahr[y]!=null && S.urlaubJahr[y]!=='' ? num(S.urlaubJahr[y]) : num(S.settings.urlaubAnspruch);
-  let urlaub=0; for(const [k,x] of Object.entries(S.days)) if(k.startsWith(y+'-') && x.typ==='urlaub') urlaub++;
+  let urlaub=0; for(const [k,x] of Object.entries(S.days)) if(k.startsWith(y+'-') && istUrlaub(x)) urlaub++;
   const m=heute.getMonth(), mr=monat(y,m), g=S.monate[`${y}-${pad(m+1)}`]||{};
   let bisher=0; for(let i=1;i<=heute.getDate();i++) bisher+=stunden(S.days[`${y}-${pad(m+1)}-${pad(i)}`]);
   app.innerHTML=`<div class="dots"><span class="${startPage===0?'on':''}"></span><span class="${startPage===1?'on':''}"></span></div><div class="swipe" id="swipe"><section class="pg">${countersPage()}</section><section class="pg">
@@ -1115,12 +1121,14 @@ const geaendert = () => new Set((S.log||[]).map(x=>x.d));
 
 /* ---------- Auswertung ---------- */
 function bloecke(y,typ){
-  const tage=Object.keys(S.days).filter(k=>k.startsWith(y+'-') && S.days[k].typ===typ).sort(), out=[];
+  const passt = e => typ==='urlaub' ? istUrlaub(e) : e.typ===typ;
+  const tage=Object.keys(S.days).filter(k=>k.startsWith(y+'-') && passt(S.days[k])).sort(), out=[];
   const bruecke = s => { const e=S.days[s]; if(e && !['frei','feiertag'].includes(e.typ)) return false; return parse(s).getDay()===0 || !!feiertag(s) || e?.typ==='feiertag' || e?.typ==='frei'; };
   for(const s of tage){
     const l=out[out.length-1];
-    if(l){ let d=addDays(parse(l.bis),1), ok=true; while(iso(d)<s){ if(!bruecke(iso(d))){ ok=false; break; } d=addDays(d,1); } if(ok){ l.bis=s; l.n++; continue; } }
-    out.push({von:s,bis:s,n:1});
+    const o = S.days[s].typ==='ugeplant' ? 1 : 0;
+    if(l){ let d=addDays(parse(l.bis),1), ok=true; while(iso(d)<s){ if(!bruecke(iso(d))){ ok=false; break; } d=addDays(d,1); } if(ok){ l.bis=s; l.n++; l.offen+=o; continue; } }
+    out.push({von:s,bis:s,n:1,offen:o});
   }
   return out;
 }
@@ -1128,8 +1136,8 @@ const tagKurz = s => { const d=parse(s); return `${WT[d.getDay()]} ${ddmm(d)}`; 
 function blockListe(y,typ){
   const b=bloecke(y,typ), heute=iso(new Date());
   if(!b.length) return '<div class="muted">Keine Einträge.</div>';
-  return b.map(x=>{ const st = x.von>heute?'geplant' : x.bis<heute?'' : 'läuft';
-    return `<div class="blk ${x.von>heute?'plan':''}" data-wk="${x.von}"><span>${x.von===x.bis?tagKurz(x.von):`${tagKurz(x.von)} – ${tagKurz(x.bis)}`}${st?` <span class="tag">${st}</span>`:''}</span><b>${x.n} Tag${x.n>1?'e':''}</b></div>`; }).join('');
+  return b.map(x=>{ const st = x.von>heute?(x.offen?'':'geplant') : x.bis<heute?'' : 'läuft';
+    return `<div class="blk ${x.von>heute?'plan':''}" data-wk="${x.von}"><span>${x.von===x.bis?tagKurz(x.von):`${tagKurz(x.von)} – ${tagKurz(x.bis)}`}${st?` <span class="tag">${st}</span>`:''}${x.offen?` <span class="tag" style="background:none;color:var(--urlaub);box-shadow:inset 0 0 0 1.5px var(--urlaub)">U geplant</span>`:''}</span><b>${x.n} Tag${x.n>1?'e':''}</b></div>`; }).join('');
 }
 function renderAusw(){
   const y=curYear, heute=iso(new Date()), sT=S.settings.sollTag;
@@ -1139,6 +1147,7 @@ function renderAusw(){
   const sch={}; let sa=0, sofe=0;
   for(const [k,e] of Object.entries(S.days)){
     if(!k.startsWith(y+'-')) continue; c[e.typ]=(c[e.typ]||0)+1; if(k>heute && plan[e.typ]!=null) plan[e.typ]++;
+    if(e.typ==='ugeplant'){ c.urlaub++; if(k>heute) plan.urlaub++; }
     if(e.typ==='arbeit'){ const t=S.settings.schichten.find(t=>t.von===e.von&&t.bis===e.bis), nm=t?t.name:'Sonstige'; sch[nm]=(sch[nm]||0)+1; const d=parse(k); if(d.getDay()===6) sa++; if(d.getDay()===0||feiertag(k)) sofe++; }
   }
   S.urlaubJahr=S.urlaubJahr||{};
@@ -1165,7 +1174,7 @@ function renderAusw(){
     <div class="stat"><div class="v">${c.sonder}</div><div class="l">SU</div></div>
   </div>
   ${sec('a_url',`🏝️ Urlaub ${y}`,`
-    <div class="muted" style="margin-bottom:6px">${c.urlaub} Tage eingetragen${plan.urlaub?` (davon ${plan.urlaub} geplant)`:''}${ans?` · Anspruch ${ans} · <b style="color:var(--text)">Rest ${ans-c.urlaub}</b>`:''}</div>
+    <div class="muted" style="margin-bottom:6px">${c.urlaub} Tage eingetragen${plan.urlaub?` (davon ${plan.urlaub} noch vor dir)`:''}${c.ugeplant?` · <b style="color:var(--urlaub)">${c.ugeplant} noch nicht genehmigt</b>`:''}${ans?` · Anspruch ${ans} · <b style="color:var(--text)">Rest ${ans-c.urlaub}</b>`:''}</div>
     ${blockListe(y,'urlaub')}`, `${c.urlaub}${ans?'/'+ans:''} Tage`, true)}
   ${sec('a_ue',`⏱️ Überstunden ${y}`,`
     <table><tbody>
@@ -1212,7 +1221,7 @@ function fahrplan(){
   const R=renteDaten(); if(!R) return [];
   const r=S.settings.rente, vor=n=>iso(new Date(R.B.getFullYear(),R.B.getMonth()-n,1));
   const ny=new Date().getFullYear(), uj=(S.urlaubJahr||{})[ny], ans=(uj!=null&&uj!=='')?num(uj):num(S.settings.urlaubAnspruch);
-  const ut=Object.entries(S.days).filter(([k,e])=>k.startsWith(ny+'-')&&e.typ==='urlaub').length, kj=konto(monday(new Date()));
+  const ut=Object.entries(S.days).filter(([k,e])=>k.startsWith(ny+'-')&&istUrlaub(e)).length, kj=konto(monday(new Date()));
   const steps=[
     {id:'kk', mon:24, ic:'🗂️', t:'Rentenkonto klären (Kontenklärung)', b:`<p>Versicherungsverlauf auf Lücken prüfen: Schule, Ausbildung, alle Arbeitgeber, Arbeitslosigkeit, Wehrdienst, Kinder.</p><p>Lücken mit dem Antrag <b>V0100</b> oder online klären. Die Bearbeitung dauert etwa 3–4 Monate.</p><p class="muted">Dafür bereithalten: Arbeitsverträge, Zeugnisse, Nachweise zu Schule und Ausbildung.</p>`},
     {id:'ra', mon:18, ic:'📄', t:'Rentenauskunft anfordern – 45 Jahre prüfen lassen', b:`<p>Eine aktuelle <b>Rentenauskunft</b> anfordern und ausdrücklich prüfen lassen, ob die <b>45 Versicherungsjahre</b> erfüllt sind.</p><p>${r.frei?`Nur dann ist die Rente ab <b>${de2(r.frei)}</b> ohne Abschlag möglich.`:'Davon hängt ab, ob du früher ohne Abschlag gehen kannst.'}</p>`},
@@ -1350,6 +1359,8 @@ const HILFE={
          ['Hinweise','Wird ein Schritt im Renten-Fahrplan fällig oder ist ein Backup dran, erscheint beim Öffnen der App ein Hinweisfenster.']],
   woche:[['Tag eintragen','Einen Tag antippen, die Art wählen (Arbeit, Frei, Urlaub, Krank …) und bei Arbeit eine Schicht-Vorlage oder eigene Zeiten. Bemerkung z. B. „Baumberg“.'],
          ['Mehrere Tage','Unten „Mehrere Tage eintragen“ aufklappen: erst die Art wählen, dann die Tage antippen, dann übernehmen. Für lange Zeiträume „Längeren Zeitraum eintragen“.'],
+         ['U geplant','Für Urlaub, der noch nicht genehmigt ist. Zählt wie Urlaub (Stunden, Resturlaub), wird aber gestrichelt angezeigt und im Kalender als „U geplant“ eingetragen. Ist er genehmigt, den Tag auf „Urlaub“ umstellen.'],
+         ['Mehrere löschen','In „Mehrere Tage eintragen“ 🗑 Löschen wählen, die Tage antippen und löschen – oder unter „Längeren Zeitraum“ 🗑 Löschen für einen ganzen Zeitraum.'],
          ['✎ neben dem Wochentag','Dieser Tag wurde geändert, nachdem er schon eingetragen war. Im Tag-Fenster steht unten, wann und was geändert wurde.'],
          ['Zahlen oben','„Woche“ = Ist minus Soll dieser Woche, „Konto“ = Überstundenkonto einschließlich dieser Woche.'],
          ['Kalender','Ist der Abgleich an, sammelt der orange Balken oben die Änderungen. „Senden“ überträgt sie mit einem Sprung an den Kurzbefehl.']],
@@ -1375,7 +1386,8 @@ const HILFE={
          ['Rechengrößen','Rentenwert, Durchschnittsentgelte und KV-Zusatzbeitrag werden automatisch aktualisiert, solange „Automatisch aktualisieren“ an ist. Ein eigener Wert schaltet die Automatik aus.']],
   einst:[['Arbeitszeit','Wochensoll und Gutschrift pro Tag für Urlaub, Krank und Feiertag.'],
          ['Kalender','Abgleich mit dem iPhone-Kalender über den Kurzbefehl. Übertragen werden nur Tage, die du in der App änderst.'],
-         ['Ü-Abbau im Kalender','Damit Ü-Abbau-Tage als ganztägiger Termin „Ü-Abbau“ erscheinen, braucht der Kurzbefehl einmalig: 1. In Teil 1 die Regel <b>^(Edeka|Urlaub)$</b> ändern in <b>^(Edeka|Urlaub|Ü-Abbau)$</b>. 2. Unten (vor „Nichts“) einen Block wie beim Urlaub: „Text abgleichen“ mit <b>(?m)^.{10}(?=\|Ü-Abbau)</b> in Kurzbefehleingabe → „Mit jedem wiederholen“ → darin „Neues Ereignis“ „Ü-Abbau“, ganztägig, Kalender Christian, Start und Ende = Objekt wiederholen.'],
+         ['Ü-Abbau im Kalender','Damit Ü-Abbau-Tage als ganztägiger Termin „Ü-Abbau“ erscheinen, braucht der Kurzbefehl einmalig: 1. In Teil 1 die Regel <b>^(Edeka|Urlaub)$</b> ändern in <b>^(Edeka|Urlaub|Ü-Abbau)$</b>. 2. Unten (vor „Nichts“) einen Block wie beim Urlaub: „Text abgleichen“ mit <b>(?m)^.{10}(?=\\|Ü-Abbau)</b> in Kurzbefehleingabe → „Mit jedem wiederholen“ → darin „Neues Ereignis“ „Ü-Abbau“, ganztägig, Kalender Christian, Start und Ende = Objekt wiederholen.'],
+         ['U geplant im Kalender','Damit „U geplant“ als ganztägiger Termin erscheint, braucht der Kurzbefehl einmalig: 1. In Teil 1 die Regel <b>^(Edeka|Urlaub|Ü-Abbau)$</b> ändern in <b>^(Edeka|Urlaub|Ü-Abbau|U geplant)$</b>. 2. Unten (vor „Nichts“) einen Block wie beim Ü-Abbau: „Text abgleichen“ mit <b>(?m)^.{10}(?=\\|U geplant)</b> in Kurzbefehleingabe → „Mit jedem wiederholen“ → darin „Neues Ereignis“ „U geplant“, ganztägig, Kalender Christian, Start und Ende = Objekt wiederholen.'],
          ['Kalender unsichtbar (Rückseite tippen)','Einmal einrichten: 1. Im Kurzbefehl „Schicht löschen“ ganz oben im Block „Empfangen … Eingabe“ die Einstellung für <i>keine Eingabe</i> auf <b>„Zwischenablage abrufen“</b> stellen. 2. iPhone-Einstellungen → Bedienungshilfen → Tippen → Auf Rückseite tippen → Doppeltippen → „Schicht löschen“. 3. Hier unter Kalender „Übertragen über: Rückseite tippen“ wählen. Ab dann: „Senden“ tippen, zweimal hinten aufs iPhone tippen – fertig, ohne die App zu verlassen.'],
          ['☁️ Synchronisation','Einmal einrichten: 1. Auf github.com ein neues Repo „Zeiterfassung-Daten“ anlegen und dabei <b>Private</b> wählen. 2. Unter Settings → Developer settings → Personal access tokens → <b>Fine-grained tokens</b> → „Generate new token“: Repository access „Only select repositories“ → Zeiterfassung-Daten, bei Permissions <b>Contents: Read and write</b>. Den Schlüssel kopieren (er wird nur einmal angezeigt). 3. Hier GitHub-Name, Repo und Schlüssel eintragen → „Verbinden“. Auf jedem weiteren Gerät dasselbe eintragen und „Daten übernehmen“ wählen. Danach gleicht die App beim Öffnen und nach jeder Änderung selbst ab – die neuere Änderung gewinnt.'],
          ['Rechenwerte','Steuertarife und Rentenwerte kommen aus der Datei werte.json im Repo. Am 15. Januar und 15. Mai erinnert dich die App. Dann den Prüftext kopieren, in einen Claude-Chat einfügen und die Antwort in GitHub in werte.json einsetzen.'],
@@ -1567,6 +1579,7 @@ function syncSection(){
    Bei jeder neuen Version: APP_VERSION erhöhen, oben in VERSIONEN einen Eintrag ergänzen und in sw.js den CACHE-Namen anpassen. */
 const ENTWICKLER='Christian Mättig', PARTNER='Claude (Anthropic)';
 const VERSIONEN=[
+  {v:'2.22', d:'02.11.2026', t:['Neue Art „U geplant“ für Urlaub, der noch nicht genehmigt ist – zählt wie Urlaub, im Kalender als „U geplant“','Mehrere Einträge auf einmal löschen: „Mehrere Tage eintragen“ oder „Längeren Zeitraum“ → 🗑 Löschen']},
   {v:'2.21', d:'14.10.2026', t:['Arbeitstage bis zur Rente nach Plan: 5 Tage pro Woche, Feiertage, Urlaub 36 Tage (Rentenjahr anteilig) – keine Hochrechnung mehr','„≈ Arbeitstage“ antippen: Rechnung je Jahr und Annahmen zum Ändern']},
   {v:'2.20', d:'14.10.2026', t:['Arbeitstage bis zur Rente genauer: eingetragene Tage zählen exakt, der Rest nach deinem Anteil der letzten 12 Monate – die Zahl sinkt jetzt pro Arbeitstag um 1','Countdown aktualisiert sich bei neuem Tag, auch wenn die App im Hintergrund offen war','Die Stechuhr im Bild zeigt die echte Uhrzeit']},
   {v:'2.19', d:'11.10.2026', t:['Synchronisation: klarere Fehlermeldungen direkt im Einrichten-Bereich','Verbindung zu GitHub robuster (Zeitlimit, keine Zusatz-Kopfzeile)']},
@@ -1674,14 +1687,14 @@ function renderEinst(){
     <div class="hint">${(k.modus||'app')==='clip'?'„Senden“ kopiert die Änderungen. Dann zweimal hinten aufs iPhone tippen – der Kurzbefehl läuft im Hintergrund, du bleibst in der App. Einrichtung: ❓ oben.':'Die Kurzbefehle-App öffnet sich kurz, zurück mit „◀ Zeiten“ oben links. Unsichtbar geht es mit „Rückseite tippen“ – Einrichtung: ❓ oben.'}</div>
     ${S.kalLast?`<button class="btn small" data-act="kallast" style="margin-top:8px">Letzte Übertragung nochmal kopieren</button>`:''}
     <label class="f">Abgleichen bei</label>
-    <div class="row">${['arbeit','frei','abbau','urlaub','krank','feiertag','sonder'].map(t=>`<button class="btn small ${k.typen.includes(t)?'on':''}" data-kaltyp="${t}">${TYPEN[t].name}</button>`).join('')}</div>
+    <div class="row">${['arbeit','frei','abbau','urlaub','ugeplant','krank','feiertag','sonder'].map(t=>`<button class="btn small ${k.typen.includes(t)?'on':''}" data-kaltyp="${t}">${TYPEN[t].name}</button>`).join('')}</div>
     <label class="f" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" data-kal="urlaubGanz" ${k.urlaubGanz?'checked':''}> Urlaub als ganztägigen Termin eintragen</label>
     <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-kal="abbauGanz" ${k.abbauGanz?'checked':''}> Ü-Abbau als ganztägigen Termin „Ü-Abbau“ eintragen</label>
-    <div class="hint">Dafür braucht der Kurzbefehl den Teil für „Ü-Abbau“ (Anleitung: ❓ oben). Ohne ihn wird an Ü-Abbau-Tagen nur die Schicht gelöscht.</div>
+    <div class="hint">Dafür braucht der Kurzbefehl die Teile für „Ü-Abbau“ und „U geplant“ (Anleitung: ❓ oben). Ohne sie wird an solchen Tagen nur die Schicht gelöscht.</div>
     <label class="f">Ort der Schicht (Standard)</label><input data-kal="ort" value="${esc(k.ort)}">
     <label class="f">Wenn Bemerkung enthält …</label><input data-kal="regelWort" value="${esc(k.regelWort)}">
     <label class="f">… dann dieser Ort</label><input data-kal="regelOrt" value="${esc(k.regelOrt)}">
-    <div class="hint">Arbeit → Termin „Edeka“ mit Zeit, Ort und Bemerkung. Urlaub → ganztägig „Urlaub“. Ü-Abbau → ganztägig „Ü-Abbau“. Frei, Krank, Feiertag → Schicht wird gelöscht. Nicht markierte Arten (z. B. Sonderurlaub) bleiben unangetastet.</div>
+    <div class="hint">Arbeit → Termin „Edeka“ mit Zeit, Ort und Bemerkung. Urlaub → ganztägig „Urlaub“. U geplant → ganztägig „U geplant“. Ü-Abbau → ganztägig „Ü-Abbau“. Frei, Krank, Feiertag → Schicht wird gelöscht. Nicht markierte Arten (z. B. Sonderurlaub) bleiben unangetastet.</div>
     <div class="hint">Übertragen werden nur Tage, die du in der App änderst. Alle anderen Termine im Kalender bleiben, wie sie sind – auch Schichten, die in der App noch fehlen.</div>
     <div class="row" style="margin-top:10px"><button class="btn small" data-act="kalweek">KW ${kw(curMon)} komplett senden</button>${(()=>{ const n=Object.entries(S.days).filter(([d,e])=>d>=iso(new Date())&&e.typ==='abbau').length; return n?`<button class="btn small" data-act="kalabbau">Künftige Ü-Abbau-Tage senden (${n})</button>`:''; })()}</div>`, k.an?'an':'aus')
   +syncSection()
@@ -1723,6 +1736,7 @@ function kalLine(s){
     return [d,'Edeka',`${d} ${e.von}`,`${deDat(endD)} ${e.bis}`,clean(ort)||'EDEKA',info].join('|');
   }
   if(e.typ==='urlaub' && k.urlaubGanz) return `${d}|Urlaub`;
+  if(e.typ==='ugeplant' && k.urlaubGanz) return `${d}|U geplant`;
   if(e.typ==='abbau' && k.abbauGanz) return `${d}|Ü-Abbau`;
   return d+'|-';
 }
@@ -1766,22 +1780,24 @@ function rangeDays(){
   return out;
 }
 function drawRange(){
-  const typs=['urlaub','krank','frei','abbau','sonder'], n=rangeDays();
+  const typs=['urlaub','ugeplant','krank','frei','abbau','sonder','del'], n=rangeDays();
   document.getElementById('sheet').innerHTML=`
     <div class="nav" style="margin-bottom:10px"><b>Zeitraum eintragen</b><button class="iconbtn" data-act="close">✕</button></div>
-    <div class="seg">${typs.map(t=>`<button data-rtyp="${t}" class="${rng.typ===t?'on':''}">${TYPEN[t].name}</button>`).join('')}</div>
+    <div class="seg">${typs.map(t=>`<button data-rtyp="${t}" class="${rng.typ===t?'on':''}">${rName(t)}</button>`).join('')}</div>
     <div class="grid2">
       <div><label class="f">Von</label><input type="date" id="rVon" value="${rng.von}"></div>
       <div><label class="f">Bis</label><input type="date" id="rBis" value="${rng.bis}"></div>
     </div>
     <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="rSo" ${rng.ohneSo?'checked':''}> Sonntage auslassen</label>
     <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="rFt" ${rng.ohneFt?'checked':''}> Feiertage auslassen (bleiben Feiertag)</label>
-    <div class="calc" id="rCalc">${n.length} Tage als ${TYPEN[rng.typ].name}</div>
-    <div class="hint">Vorhandene Einträge an diesen Tagen werden überschrieben.</div>
+    <div class="calc" id="rCalc">${rText()}</div>
+    <div class="hint">${rng.typ==='del'?'Alle Einträge in diesem Zeitraum werden gelöscht – ist der Kalender-Abgleich an, auch die Termine im Kalender. Sonntage und Feiertage nur, wenn die Haken oben aus sind.':'Vorhandene Einträge an diesen Tagen werden überschrieben.'}</div>
     <div class="row" style="margin-top:14px;justify-content:flex-end">
-      <button class="btn primary" data-act="rsave" style="flex:1;max-width:260px">Eintragen</button>
+      <button class="btn primary ${rng.typ==='del'?'danger':''}" data-act="rsave" style="flex:1;max-width:260px">${rng.typ==='del'?'Löschen':'Eintragen'}</button>
     </div>`;
 }
+const rName = t => t==='del' ? '🗑 Löschen' : TYPEN[t].name;
+function rText(){ const n=rangeDays(); if(rng.typ!=='del') return `${n.length} Tage als ${TYPEN[rng.typ].name}`; const m=n.filter(s=>S.days[s]).length; return `${m} Eintr${m===1?'ag':'äge'} werden gelöscht`; }
 function readRange(){
   const g=id=>document.getElementById(id); if(!g('rVon')) return;
   rng.von=g('rVon').value; rng.bis=g('rBis').value; rng.ohneSo=g('rSo').checked; rng.ohneFt=g('rFt').checked;
@@ -1848,6 +1864,13 @@ const onClick=ev=>{
     case 'fillnone': fill.days=[]; break;
     case 'fillgo': {
       if(!fill.art||!fill.days.length) return toast('Erst Auswahl und Tage wählen');
+      if(fill.art==='del'){
+        const mit=fill.days.filter(s=>S.days[s]).sort();
+        if(!mit.length){ fill.days=[]; render(); return toast('Die gewählten Tage haben keine Einträge'); }
+        if(!confirm(`${mit.length} Eintr${mit.length>1?'äge':'ag'} löschen?\n${mit.map(s=>tagKurz(s)+' – '+(S.days[s].typ==='arbeit'?kurz(S.days[s]):TYPEN[S.days[s].typ].name)).join('\n')}`)) return;
+        const ch=mit.filter(s=>setDay(s,null));
+        fill.days=[]; save(); commitKal(ch); render(); return toast(`${ch.length} Eintr${ch.length>1?'äge':'ag'} gelöscht`);
+      }
       const ch=[], n=fill.days.length;
       for(const s of fill.days){
         let e;
@@ -1985,6 +2008,13 @@ sheet.addEventListener('click',ev=>{
     case 'rsave': {
       readRange(); const tage=rangeDays();
       if(!tage.length) return toast('Keine Tage im Zeitraum');
+      if(rng.typ==='del'){
+        const mit=tage.filter(s=>S.days[s]);
+        if(!mit.length) return toast('In diesem Zeitraum gibt es keine Einträge');
+        if(!confirm(`${mit.length} Eintr${mit.length>1?'äge':'ag'} vom ${deDat(mit[0])} bis ${deDat(mit[mit.length-1])} löschen?`)) return;
+        const ch=mit.filter(s=>setDay(s,null)); rng=null;
+        save(); closeSheet(); commitKal(ch); render(); return toast(`${ch.length} Eintr${ch.length>1?'äge':'ag'} gelöscht`);
+      }
       const ch=[];
       for(const s of tage){ if(setDay(s,{typ:rng.typ})) ch.push(s); }
       if(rng.ohneFt){ let a=parse(rng.von), b=parse(rng.bis); if(b<a) [a,b]=[b,a];
@@ -2007,7 +2037,7 @@ sheet.addEventListener('click',ev=>{
     }
   }
 });
-sheet.addEventListener('input',()=>{ if(rng){ readRange(); const c=document.getElementById('rCalc'); if(c) c.textContent=`${rangeDays().length} Tage als ${TYPEN[rng.typ].name}`; return; } if(!edit) return; readSheet(); const c=document.getElementById('eCalc'); if(c) c.textContent=(edit.typ==='arbeit'?'':'Gutschrift ')+fmt(stunden(edit))+' Std.'; });
+sheet.addEventListener('input',()=>{ if(rng){ readRange(); const c=document.getElementById('rCalc'); if(c) c.textContent=rText(); return; } if(!edit) return; readSheet(); const c=document.getElementById('eCalc'); if(c) c.textContent=(edit.typ==='arbeit'?'':'Gutschrift ')+fmt(stunden(edit))+' Std.'; });
 sheet.addEventListener('change',ev=>{
   const el=ev.target;
   if(el.dataset && el.dataset.at){ const k=el.dataset.at, v=el.value.trim();

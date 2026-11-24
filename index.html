@@ -237,7 +237,7 @@ details summary{cursor:pointer;padding:6px 0}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.23';
+const APP_VERSION = 'v2.24';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -517,7 +517,7 @@ function drawSheet(){
     <div class="seg">${tb}</div>
     ${body}
     <label class="f">Bemerkung / Ort <span class="muted" style="font-weight:400">· geht mit in den Kalender</span></label><input id="eNotiz" value="${esc(edit.notiz||'')}" placeholder="z. B. Baumberg">
-    <label class="f">Kommentar <span class="muted" style="font-weight:400">· nur hier in der App</span></label><input id="eKomm" value="${esc(edit.kommentar||'')}" placeholder="${edit.typ==='veranst'?'z. B. Weihnachtsfeier':'z. B. Inventur'}">
+    <label class="f">Kommentar <span class="muted" style="font-weight:400">· bei Schichten auch im Kalender</span></label><input id="eKomm" value="${esc(edit.kommentar||'')}" placeholder="${edit.typ==='veranst'?'z. B. Weihnachtsfeier':'z. B. Inventur'}">
     <div class="row" style="margin-top:14px;justify-content:space-between">
       ${ex?'<button class="btn danger" data-act="del">Löschen</button>':'<span></span>'}
       <button class="btn primary" data-act="save" style="flex:1;max-width:220px">Speichern</button>
@@ -1397,7 +1397,7 @@ const HILFE={
          ['Mehrere Tage','Unten „Mehrere Tage eintragen“ aufklappen: erst die Art wählen, dann die Tage antippen, dann übernehmen. Für lange Zeiträume „Längeren Zeitraum eintragen“.'],
          ['U geplant','Für Urlaub, der noch nicht genehmigt ist. Zählt wie Urlaub (Stunden, Resturlaub), wird aber gestrichelt angezeigt und im Kalender als „U geplant“ eingetragen. Ist er genehmigt, den Tag auf „Urlaub“ umstellen.'],
          ['Mehrere löschen','In „Mehrere Tage eintragen“ 🗑 Löschen wählen, die Tage antippen und löschen – oder unter „Längeren Zeitraum“ 🗑 Löschen für einen ganzen Zeitraum.'],
-         ['Kommentar','Im Tag-Fenster unter „Kommentar“ eine Notiz nur für dich, z. B. „Inventur“. Sie steht in der Woche mit 💬 und geht nicht in den Kalender. Was in den Kalender soll (z. B. Baumberg), gehört in „Bemerkung / Ort“.'],
+         ['Kommentar','Im Tag-Fenster unter „Kommentar“ eine zusätzliche Notiz, z. B. „Inventur“. Sie steht in der Woche mit 💬 und bei Schichten auch in der Notiz des Kalendertermins (z. B. „Spät · Baumberg · Inventur“). „Bemerkung / Ort“ bleibt für den Ort, z. B. Baumberg.'],
          ['Sonntag','Sonntagsstunden zählen doppelt. Bei einem neuen Eintrag am Sonntag ist deshalb der Zuschlag 100 % schon vorgewählt – im Tag-Fenster lässt er sich ändern.'],
          ['Veranstaltung','Für betriebliche Veranstaltungen ohne Stundenerfassung (0 Std., zählt wie ein freier Tag). Was es war, unter Kommentar eintragen. Ist die Veranstaltung nach einer Schicht, den Tag als Arbeit lassen und sie nur als Kommentar notieren.'],
          ['Ü-Abbau','Ein Ü-Abbau-Tag zählt mit 7,50 Std. ins Ist der Woche. Unter den Zahlen oben steht, wie viel dafür vom Überstundenkonto abgeht.'],
@@ -1619,6 +1619,7 @@ function syncSection(){
    Bei jeder neuen Version: APP_VERSION erhöhen, oben in VERSIONEN einen Eintrag ergänzen und in sw.js den CACHE-Namen anpassen. */
 const ENTWICKLER='Christian Mättig', PARTNER='Claude (Anthropic)';
 const VERSIONEN=[
+  {v:'2.24', d:'24.11.2026', t:['Der Kommentar kommt bei Schichten mit in die Notiz des Kalendertermins, z. B. „Spät · Baumberg · Inventur“']},
   {v:'2.23', d:'24.11.2026', t:['Neues Feld „Kommentar“ bei jedem Tag – bleibt nur in der App (z. B. Inventur)','Sonntag: Stunden zählen doppelt – Zuschlag 100 % wird bei neuen Einträgen vorgewählt','Neue Art „Veranstaltung“ für betriebliche Veranstaltungen ohne Stundenerfassung','Woche: Ü-Abbau-Tage zählen mit 7,50 Std. ins Ist, der Abzug vom Konto steht in einer eigenen Zeile – der Kontostand bleibt gleich','Hinweis „Neue Version ist da – Jetzt laden“, sobald es ein Update gibt']},
   {v:'2.22', d:'02.11.2026', t:['Neue Art „U geplant“ für Urlaub, der noch nicht genehmigt ist – zählt wie Urlaub, im Kalender als „U geplant“','Mehrere Einträge auf einmal löschen: „Mehrere Tage eintragen“ oder „Längeren Zeitraum“ → 🗑 Löschen']},
   {v:'2.21', d:'14.10.2026', t:['Arbeitstage bis zur Rente nach Plan: 5 Tage pro Woche, Feiertage, Urlaub 36 Tage (Rentenjahr anteilig) – keine Hochrechnung mehr','„≈ Arbeitstage“ antippen: Rechnung je Jahr und Annahmen zum Ändern']},
@@ -1773,7 +1774,7 @@ function kalLine(s){
     const n=(e.notiz||'').toLowerCase(), w=(k.regelWort||'').toLowerCase();
     const ort = (w && k.regelOrt && n.includes(w)) ? k.regelOrt : k.ort;
     const tp=S.settings.schichten.find(t=>t.von===e.von&&t.bis===e.bis);
-    const info=[tp?tp.name:'Schicht', clean(e.notiz)].filter(Boolean).join(' · ');
+    const info=[tp?tp.name:'Schicht', clean(e.notiz), clean(e.kommentar)].filter(Boolean).join(' · ');
     return [d,'Edeka',`${d} ${e.von}`,`${deDat(endD)} ${e.bis}`,clean(ort)||'EDEKA',info].join('|');
   }
   if(e.typ==='urlaub' && k.urlaubGanz) return `${d}|Urlaub`;

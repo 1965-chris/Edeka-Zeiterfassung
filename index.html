@@ -16,14 +16,14 @@
 :root{
   --bg:#f3f5f4; --card:#ffffff; --text:#17201d; --muted:#6b7773; --line:#e2e7e5;
   --accent:#1f6f5c; --accent-soft:#dcefe8; --plus:#1f8a4c; --minus:#c0392b;
-  --urlaub:#2f7bd8; --feiertag:#8e44ad; --krank:#d35400; --frei:#8a9490; --sonder:#b8860b; --abbau:#16a085;
+  --urlaub:#2f7bd8; --feiertag:#8e44ad; --krank:#d35400; --frei:#8a9490; --sonder:#b8860b; --abbau:#16a085; --veranst:#c2185b;
   --radius:14px;
 }
 @media (prefers-color-scheme: dark){
   :root{
     --bg:#0f1413; --card:#1a2220; --text:#e8eeec; --muted:#93a19c; --line:#2a3532;
     --accent:#4fbf9f; --accent-soft:#1d3a32; --plus:#4cd07d; --minus:#ff6b5b;
-    --urlaub:#5aa2ff; --feiertag:#c084fc; --krank:#ff9a4d; --frei:#7d8a86; --sonder:#e0b83a; --abbau:#3dd6b5;
+    --urlaub:#5aa2ff; --feiertag:#c084fc; --krank:#ff9a4d; --frei:#7d8a86; --sonder:#e0b83a; --abbau:#3dd6b5; --veranst:#f06292;
   }
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -64,6 +64,9 @@ main{padding:0 16px 16px;max-width:640px;margin:0 auto}
 .chip.urlaub{background:var(--urlaub)} .chip.feiertag{background:var(--feiertag)} .chip.krank{background:var(--krank)}
 .chip.frei{background:var(--frei)} .chip.sonder{background:var(--sonder)} .chip.abbau{background:var(--abbau)}
 .chip.ugeplant{background:transparent;color:var(--urlaub);box-shadow:inset 0 0 0 1.5px var(--urlaub)}
+.chip.veranst{background:var(--veranst)}
+.abzug{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--card);border-radius:12px;padding:10px 14px;margin:8px 0 0;font-size:14px}
+.abzug b{color:var(--minus);font-size:16px}
 .chip.ghost{background:transparent;color:var(--muted);border:1px dashed var(--line)}
 .hol{font-size:11px;color:var(--feiertag)}
 .row{display:flex;gap:8px;flex-wrap:wrap}
@@ -173,6 +176,9 @@ table.calc2 tr.sum td{font-weight:700;border-top:2px solid var(--line)}
 .stats3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .kalbar button{border:0;border-radius:10px;padding:7px 12px;font-weight:700;background:#e67e22;color:#fff;font-size:14px}
 .kalbar button.x{background:transparent;color:inherit;padding:7px 6px}
+.upbar{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px 10px;border-radius:12px;background:var(--accent-soft);color:var(--accent);font-size:14px;font-weight:600}
+.upbar span{flex:1}
+.upbar button{border:0;border-radius:10px;padding:7px 12px;font-weight:700;background:var(--accent);color:#fff;font-size:14px}
 .pop-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:40;display:none}
 .pop{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:41;width:calc(100% - 32px);max-width:440px;max-height:84vh;overflow:auto;background:var(--card);border-radius:18px;padding:16px;display:none;box-shadow:0 10px 30px rgba(0,0,0,.25)}
 .pop.open,.pop-bg.open{display:block}
@@ -212,7 +218,7 @@ details summary{cursor:pointer;padding:6px 0}
 </style>
 </head>
 <body>
-<header class="hdr"><div class="top"><div><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></div><div style="display:flex;gap:8px;align-items:center"><button class="todaybtn" id="todayBtn" hidden>Heute</button><button class="iconbtn" id="backBtn" aria-label="Schließen" hidden>✕</button><button class="iconbtn helpbtn" id="helpBtn" aria-label="Hilfe">?</button><button class="iconbtn" id="setBtn" aria-label="Einstellungen">⚙️</button></div></div><div id="navbar"></div><div id="kalbar"></div><div id="syncbar"></div></header>
+<header class="hdr"><div class="top"><div><h1 id="title">Zeiterfassung</h1><div class="sub" id="subtitle"></div></div><div style="display:flex;gap:8px;align-items:center"><button class="todaybtn" id="todayBtn" hidden>Heute</button><button class="iconbtn" id="backBtn" aria-label="Schließen" hidden>✕</button><button class="iconbtn helpbtn" id="helpBtn" aria-label="Hilfe">?</button><button class="iconbtn" id="setBtn" aria-label="Einstellungen">⚙️</button></div></div><div id="navbar"></div><div id="upbar"></div><div id="kalbar"></div><div id="syncbar"></div></header>
 <main id="app"></main>
 
 <nav class="tabbar">
@@ -231,7 +237,7 @@ details summary{cursor:pointer;padding:6px 0}
 
 <script>
 'use strict';
-const APP_VERSION = 'v2.22';
+const APP_VERSION = 'v2.23';
 const KEY = 'zeiterfassung-daten';
 
 /* ---------- Typen ---------- */
@@ -243,8 +249,10 @@ const TYPEN = {
   feiertag: {name:'Feiertag',   gutschrift:true},
   krank:    {name:'Krank',      gutschrift:true},
   sonder:   {name:'Sonderurl.', gutschrift:true},
-  abbau:    {name:'Ü-Abbau',    gutschrift:false}
+  abbau:    {name:'Ü-Abbau',    gutschrift:false},
+  veranst:  {name:'Veranstaltung', gutschrift:false}
 };
+/* „Veranstaltung“ = betriebliche Veranstaltung, ohne Stundenerfassung (zählt 0 Std., wie ein freier Tag) */
 /* „U geplant“ = Urlaub, der noch nicht genehmigt ist – zählt überall wie Urlaub */
 const istUrlaub = e => !!e && (e.typ==='urlaub' || e.typ==='ugeplant');
 
@@ -253,7 +261,7 @@ const DEFAULT = {
   settings:{
     sollTag:6.25, wochenSoll:37.5, startDatum:'', startSaldo:0, urlaubAnspruch:0, feiertageNRW:true, backupTage:30, tageWoche:5, urlaubWerktage:true,
     kal:{v:2, an:false, name:'Schicht löschen', sofort:false, urlaubGanz:true, abbauGanz:true, modus:'app',
-         typen:['arbeit','frei','abbau','urlaub','ugeplant','krank','feiertag'],
+         typen:['arbeit','frei','abbau','urlaub','ugeplant','krank','feiertag','veranst'],
          ort:'EDEKA Möller, Elsa-Neumann-Straße 6, 40789 Monheim am Rhein',
          regelWort:'Baumberg', regelOrt:'EDEKA Möller, Geschwister-Scholl-Straße 69'},
     rente:{regel:'', beginn:'', frei:'', versBeginn:'', infoStand:'', infoEP:'', infoPrognose:'', infoRW:'', epExtra:'',
@@ -278,6 +286,7 @@ function load(){
   { const alt=(S.settings.rente)||{}; S.settings.rente=Object.assign(structuredClone(DEFAULT.settings.rente), alt); S.settings.rente.de=Object.assign({}, DEFAULT.settings.rente.de, alt.de||{}); }
   if(!altKal.v){ const k=S.settings.kal; k.v=2; k.typen=[...DEFAULT.settings.kal.typen]; delete k.urlaubAn; delete k.urlaubName; }
   { const k=S.settings.kal; if((k.v||0)<3){ if(k.typen.includes('urlaub') && !k.typen.includes('ugeplant')) k.typen.splice(k.typen.indexOf('urlaub')+1,0,'ugeplant'); k.v=3; } }
+  { const k=S.settings.kal; if((k.v||0)<4){ if(k.typen.includes('frei') && !k.typen.includes('veranst')) k.typen.push('veranst'); k.v=4; } }
   S.settings.steuer = Object.assign(structuredClone(DEFAULT.settings.steuer), S.settings.steuer||{});
   S.days = S.days||{}; S.monate = S.monate||{}; S.kalQ = S.kalQ||[]; S.steuer = S.steuer||{}; S.log = S.log||[]; S.erinn = S.erinn||{}; if(!S.wcStart) S.wcStart=iso(new Date());
   S.syncT = S.syncT||{days:{},monate:{},sec:{}};
@@ -339,7 +348,7 @@ const feiertag = s => S.settings.feiertageNRW ? feiertage(+s.slice(0,4))[s] : nu
 
 /* ---------- Berechnung ---------- */
 function stunden(e){
-  if(!e || e.typ==='frei') return 0;
+  if(!e || e.typ==='frei' || e.typ==='veranst') return 0;
   if(e.std!=null && e.std!=='') return num(e.std);
   if(TYPEN[e.typ]?.gutschrift) return S.settings.sollTag;
   if(e.typ!=='arbeit') return 0;
@@ -353,6 +362,18 @@ function woche(mo){
   for(let i=0;i<7;i++){ const e=S.days[iso(addDays(mo,i))]; if(e){hat=true; ist+=stunden(e);} }
   return {ist, soll:S.settings.wochenSoll, diff:ist-S.settings.wochenSoll, hat};
 }
+/* Ü-Abbau: ein Tag = Wochensoll ÷ Arbeitstage pro Woche (37,5 ÷ 5 = 7,5 Std.) */
+const abbauTag = () => num(S.settings.wochenSoll) / Math.min(6,Math.max(1,num(S.settings.tageWoche)||5));
+/* Nur für die Anzeige: Ü-Abbau-Tage zählen mit 7,5 Std. ins Ist, der Abzug steht extra.
+   Ist + Abbau − Soll − Abbau = Ist − Soll → das Konto ändert sich dadurch nicht. */
+function wocheAnzeige(mo){
+  const w=woche(mo); let n=0;
+  for(let i=0;i<7;i++){ const e=S.days[iso(addDays(mo,i))]; if(e && e.typ==='abbau' && (e.std==null || e.std==='')) n++; }
+  const a=n*abbauTag();
+  return {...w, ist:w.ist+a, diff:w.diff+a, abbauTage:n, abbau:a, kontoDiff:w.diff};
+}
+/* Sonntag: Stunden zählen doppelt (Zuschlag 100 %) – als Vorschlag beim Eintragen */
+const sonntag = s => parse(s).getDay()===0;
 /* Überstundenkonto: Startsaldo + Summe aller abgeschlossenen Wochen mit Einträgen */
 function konto(bisMontag){
   const keys=Object.keys(S.days).sort();
@@ -391,12 +412,14 @@ function render(){
 
 /* ---------- Woche ---------- */
 function renderWoche(){
-  const mo=curMon, so=addDays(mo,6), w=woche(mo), k=konto(mo), today=iso(new Date());
+  const mo=curMon, so=addDays(mo,6), w=wocheAnzeige(mo), k=konto(mo), today=iso(new Date()), aT=abbauTag();
   const istAktuell = mo.getTime()===monday(new Date()).getTime(), chg=geaendert();
   setTitle('Woche', `KW ${kw(mo)} · ${ddmm(mo)}–${ddmm(so)}${so.getFullYear()}`);
   let rows='';
   for(let i=0;i<7;i++){
-    const d=addDays(mo,i), s=iso(d), e=S.days[s], h=stunden(e), ft=feiertag(s);
+    const d=addDays(mo,i), s=iso(d), e=S.days[s], ft=feiertag(s);
+    const h = (e && e.typ==='abbau' && (e.std==null||e.std==='')) ? aT : stunden(e);
+    const nz = e ? [e.notiz?esc(e.notiz):'', e.kommentar?'💬 '+esc(e.kommentar):''].filter(Boolean).join(' · ') : '';
     let mid;
     if(!e) mid=`<span class="chip ghost">leer</span>`;
     else if(e.typ==='arbeit' && e.von) mid=`<div class="t">${e.von} – ${e.bis} <span class="muted">· ${e.pause||0}′ P.</span>${zuschlagP(e)?` <span class="chip sonder">+${zuschlagP(e)}%</span>`:''}</div>`;
@@ -404,10 +427,10 @@ function renderWoche(){
     else mid=`<span class="chip ${e.typ}">${TYPEN[e.typ].name}</span>`;
     rows+=`<div class="day ${s===today?'today':''} ${i===6?'sun':''}" data-edit="${s}">
       <div class="d"><b>${WT[d.getDay()]}${chg.has(s)?'<i class="chg" title="geändert">✎</i>':''}</b><span>${ddmm(d)}</span></div>
-      <div class="m">${mid}${ft?`<div class="hol">🎉 ${ft}</div>`:''}${e?.notiz?`<div class="n">${esc(e.notiz)}</div>`:''}</div>
+      <div class="m">${mid}${ft?`<div class="hol">🎉 ${ft}</div>`:''}${nz?`<div class="n">${nz}</div>`:''}</div>
       <div class="h">${e?fmt(h):''}</div></div>`;
   }
-  const saldoNeu = k + (w.hat?w.diff:0);
+  const saldoNeu = k + (w.hat?w.kontoDiff:0);
   setNav(`<div class="card nav">
     <button class="iconbtn" data-act="wprev">‹</button>
     <div style="text-align:center" data-act="wtoday"><b>KW ${kw(mo)}</b><small>${ddmm(mo)} – ${ddmm(so)}${so.getFullYear()}</small></div>
@@ -420,6 +443,7 @@ function renderWoche(){
     <div class="stat"><div class="v ${w.diff>=0?'pos':'neg'}">${fmtS(w.diff)}</div><div class="l">Woche</div></div>
     <div class="stat"><div class="v ${saldoNeu>=0?'pos':'neg'}">${fmtS(saldoNeu)}</div><div class="l">Konto</div></div>
   </div>
+  ${w.abbauTage?`<div class="abzug"><span>⏱️ Ü-Abbau · ${w.abbauTage} Tag${w.abbauTage>1?'e':''} × ${fmt(aT)} Std.<br><span class="muted" style="font-size:12px">${fmtS(w.diff)} Woche ${fmtS(-w.abbau)} Ü-Abbau = ${fmtS(w.kontoDiff)} aufs Konto</span></span><b>${fmtS(-w.abbau)}</b></div>`:''}
   <div class="card">${rows}</div>
   ${fillCard(mo)}`;
 }
@@ -453,6 +477,7 @@ let edit=null;
 function openEdit(s){
   const e=S.days[s], ft=feiertag(s);
   edit = e ? structuredClone(e) : (ft ? {typ:'feiertag'} : {typ:'arbeit',von:'',bis:'',pause:30});
+  if(!e && edit.typ==='arbeit' && sonntag(s)) edit.zuschlag=100;
   edit._s=s; drawSheet();
   document.getElementById('sheet').classList.add('open'); document.getElementById('sheetBg').classList.add('open');
 }
@@ -473,12 +498,16 @@ function drawSheet(){
       <div><label class="f">Zuschlag</label><select id="eZ">${[0,25,50,100].map(p=>`<option value="${p}" ${zuschlagP(edit)===p?'selected':''}>${p?p+' % (zählt ×'+(1+p/100).toLocaleString('de-DE')+')':'kein'}</option>`).join('')}</select></div>
       <div><label class="f">Stunden manuell</label><input inputmode="decimal" id="eStd" value="${edit.std!=null?fmt(edit.std):''}" placeholder="aus Zeiten"></div>
     </div>
-    <div class="calc" id="eCalc">${fmt(stunden(edit))} Std.</div>`;
+    <div class="calc" id="eCalc">${fmt(stunden(edit))} Std.</div>
+    ${d.getDay()===0?`<div class="hint">Sonntag: Die Stunden zählen doppelt – dafür Zuschlag 100 % (wird bei neuen Einträgen vorgewählt).</div>`:''}`;
   } else if(TYPEN[edit.typ].gutschrift){
     body=`<label class="f">Stunden manuell</label><input inputmode="decimal" id="eStd" value="${edit.std!=null?fmt(edit.std):''}" placeholder="Standard ${fmt(S.settings.sollTag)}">
     <div class="calc" id="eCalc">Gutschrift ${fmt(stunden(edit))} Std.</div>`;
   } else if(edit.typ==='abbau'){
-    body=`<div class="calc">0,00 Std. · fehlt am Wochensoll<br><span style="font-weight:600">Überstundenkonto wird entsprechend belastet</span></div>`;
+    body=`<div class="calc">${fmt(abbauTag())} Std.<br><span style="font-weight:600">werden vom Überstundenkonto abgezogen</span></div>`;
+  } else if(edit.typ==='veranst'){
+    body=`<div class="calc">Betriebliche Veranstaltung<br><span style="font-weight:600">ohne Stundenerfassung · 0,00 Std.</span></div>
+    <div class="hint">Was es war, z. B. „Weihnachtsfeier“, unten bei Kommentar eintragen. Ist die Veranstaltung nach einer Schicht, den Tag als Arbeit lassen und sie nur als Kommentar notieren.</div>`;
   } else {
     body=`<div class="calc">0,00 Std.</div>`;
   }
@@ -487,7 +516,8 @@ function drawSheet(){
     <button class="iconbtn" data-act="close">✕</button></div>
     <div class="seg">${tb}</div>
     ${body}
-    <label class="f">Bemerkung / Ort</label><input id="eNotiz" value="${esc(edit.notiz||'')}" placeholder="z. B. Baumberg">
+    <label class="f">Bemerkung / Ort <span class="muted" style="font-weight:400">· geht mit in den Kalender</span></label><input id="eNotiz" value="${esc(edit.notiz||'')}" placeholder="z. B. Baumberg">
+    <label class="f">Kommentar <span class="muted" style="font-weight:400">· nur hier in der App</span></label><input id="eKomm" value="${esc(edit.kommentar||'')}" placeholder="${edit.typ==='veranst'?'z. B. Weihnachtsfeier':'z. B. Inventur'}">
     <div class="row" style="margin-top:14px;justify-content:space-between">
       ${ex?'<button class="btn danger" data-act="del">Löschen</button>':'<span></span>'}
       <button class="btn primary" data-act="save" style="flex:1;max-width:220px">Speichern</button>
@@ -499,6 +529,7 @@ function readSheet(){
   if(g('eVon')){ edit.von=g('eVon').value; edit.bis=g('eBis').value; edit.pause=parseInt(g('ePause').value)||0; edit.zuschlag=+g('eZ').value||0; }
   if(g('eStd')){ const v=g('eStd').value.trim(); if(v) edit.std=num(v); else delete edit.std; }
   if(g('eNotiz')) edit.notiz=g('eNotiz').value.trim();
+  if(g('eKomm')) edit.kommentar=g('eKomm').value.trim();
 }
 
 /* ---------- Monat ---------- */
@@ -544,7 +575,7 @@ function renderMonat(){
       <tr><td>${esc(g.sonderText||'Sonderzahlung')}</td><td>${sb?eur(sb):'–'}</td><td>${sn?eur(sn):'–'}</td></tr></tbody>
       <tfoot><tr><td>Gesamt</td><td>${eur(br+sb)}</td><td>${eur(ne+sn)}</td></tr></tfoot></table>
       <div class="hint">Std.-Lohn ohne Sonderzahlung, damit die Monate vergleichbar bleiben.</div>`:''}
-    <div class="muted" style="margin-top:8px">Feiertage: ${r.feiertag} · Freie Tage: ${r.frei}${r.abbau?` · Überstunden-Abbau: ${r.abbau} Tag(e)`:''}${r.zuschlag?` · Zuschlagsstunden: ${fmt(r.zuschlag)}`:''}</div>
+    <div class="muted" style="margin-top:8px">Feiertage: ${r.feiertag} · Freie Tage: ${r.frei}${r.abbau?` · Überstunden-Abbau: ${r.abbau} Tag(e)`:''}${r.veranst?` · Veranstaltungen: ${r.veranst}`:''}${r.zuschlag?` · Zuschlagsstunden: ${fmt(r.zuschlag)}`:''}</div>
     <div class="row" style="margin-top:8px"><button class="btn small" data-act="copyprev">Lohn vom Vormonat übernehmen</button>${m<11?`<button class="btn small" data-act="copynext">Auf Folgemonate ${y} übertragen</button>`:''}</div>
   </div>
   <div class="card"><h2>Einträge</h2>${list?`<table><tbody>${list}</tbody></table>`:'<div class="muted">Noch keine Einträge.</div>'}</div>`;
@@ -692,7 +723,7 @@ function arbeitsPlan(b){
       if(i===6) continue;                                   // Sonntag
       if(istFt(s,e)){ if(drin) jahr(d.getFullYear()).ft++; continue; }
       plaetze++; if(d>=b) continue; plaetzeBisB++;
-      if(e){ if(e.typ==='frei') F++; continue; }
+      if(e){ if(e.typ==='frei' || e.typ==='veranst') F++; continue; }
       if(d<heute) frueherOffen++; else offen.push(d);
     }
     const nochFrei = Math.max(0, freiWoche*plaetzeBisB/Math.max(1,plaetze) - F - frueherOffen);
@@ -734,7 +765,7 @@ function openArbeitstage(){
   sheet.classList.add('open'); document.getElementById('sheetBg').classList.add('open');
 }
 function tageText(n){ return n===0?'heute':n===1?'morgen':n===2?'übermorgen':`in ${n} Tagen`; }
-const FREI=['frei','abbau','feiertag'];
+const FREI=['frei','abbau','feiertag','veranst'];
 function istFrei(s){ const e=S.days[s]; return e ? FREI.includes(e.typ) : !!feiertag(s); }
 function freiCounter(){
   const now=new Date(), heute=new Date(now.getFullYear(),now.getMonth(),now.getDate());
@@ -819,9 +850,9 @@ function renderStart(){
   // nächste Einträge
   let nx=''; let n=0;
   for(let i=1;i<=21&&n<5;i++){ const d=addDays(heute,i), s=iso(d), x=S.days[s]; if(!x) continue; n++;
-    nx+=`<div class="nx" data-edit="${s}"><b>${i===1?'Morgen':WT[d.getDay()]+' '+ddmm(d)}</b><span style="flex:1;text-align:right">${eintragText(x)}${x.notiz?` <span class="muted">· ${esc(x.notiz)}</span>`:''}</span></div>`; }
+    nx+=`<div class="nx" data-edit="${s}"><b>${i===1?'Morgen':WT[d.getDay()]+' '+ddmm(d)}</b><span style="flex:1;text-align:right">${eintragText(x)}${x.notiz?` <span class="muted">· ${esc(x.notiz)}</span>`:''}${x.kommentar?` <span class="muted">· 💬 ${esc(x.kommentar)}</span>`:''}</span></div>`; }
   // Kennzahlen
-  const mo=monday(heute), w=woche(mo), kt=konto(mo);
+  const mo=monday(heute), w=wocheAnzeige(mo), kt=konto(mo);
   const y=heute.getFullYear(); S.urlaubJahr=S.urlaubJahr||{};
   const ans = S.urlaubJahr[y]!=null && S.urlaubJahr[y]!=='' ? num(S.urlaubJahr[y]) : num(S.settings.urlaubAnspruch);
   let urlaub=0; for(const [k,x] of Object.entries(S.days)) if(k.startsWith(y+'-') && istUrlaub(x)) urlaub++;
@@ -832,6 +863,7 @@ function renderStart(){
     <div class="muted">Heute${ft?' · 🎉 '+ft:''}</div>
     <div class="today-big">${eintragText(e)}</div>
     ${e?.notiz?`<div class="muted">${esc(e.notiz)}</div>`:''}
+    ${e?.kommentar?`<div class="muted">💬 ${esc(e.kommentar)}</div>`:''}
   </div>
   <div class="stats">
     <div class="stat dash" data-go="woche"><div class="v ${w.diff>=0?'pos':'neg'}">${fmtS(w.diff)}</div><div class="l">Woche</div></div>
@@ -1111,7 +1143,8 @@ const dtKurz = t => { const d=new Date(t); return `${pad(d.getDate())}.${pad(d.g
 function vorlauf(x){ const at=new Date(x.t), n=Math.round((parse(x.d)-new Date(at.getFullYear(),at.getMonth(),at.getDate()))/864e5); return n; }
 function logZeile(x,mitTag){
   const a=descr(x.a), n=descr(x.n), v=vorlauf(x), d=parse(x.d);
-  let was = a!==n ? `${esc(a)} → <b>${esc(n)}</b>` : (x.a?.notiz||'')!==(x.n?.notiz||'') ? `Bemerkung: „${esc(x.a?.notiz||'–')}“ → „${esc(x.n?.notiz||'–')}“` : `${esc(n)} – Details geändert`;
+  let was = a!==n ? `${esc(a)} → <b>${esc(n)}</b>` : (x.a?.notiz||'')!==(x.n?.notiz||'') ? `Bemerkung: „${esc(x.a?.notiz||'–')}“ → „${esc(x.n?.notiz||'–')}“`
+    : (x.a?.kommentar||'')!==(x.n?.kommentar||'') ? `Kommentar: „${esc(x.a?.kommentar||'–')}“ → „${esc(x.n?.kommentar||'–')}“` : `${esc(n)} – Details geändert`;
   const vt = v>1?`${v} Tage vorher` : v===1?'1 Tag vorher' : v===0?'am selben Tag' : 'nachträglich';
   const kf = v>=0 && v<=3;
   return `<div class="log">${mitTag?`<b>${WT[d.getDay()]} ${ddmm(d)}${d.getFullYear()}</b> · `:''}${was}
@@ -1166,6 +1199,8 @@ function renderAusw(){
   const monRows = mon.map((v,m)=>v==null?'':`<tr class="${new Date(y,m,1)>new Date()?'muted':''}"><td>${MON[m]}</td><td class="${v>=0?'pos':'neg'}">${fmtS(v)}</td></tr>`).join('');
   const schList = Object.entries(sch).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`<div class="stat"><div class="v">${v}</div><div class="l">${esc(n)}</div></div>`).join('');
   const logs=(S.log||[]).filter(x=>x.d.startsWith(y+'-')).sort((a,b)=>b.t-a.t);
+  const veranstHTML = Object.keys(S.days).filter(k=>k.startsWith(y+'-')&&S.days[k].typ==='veranst').sort()
+    .map(k=>`<div class="blk ${k>heute?'plan':''}" data-wk="${k}"><span>${tagKurz(k)}${k>heute?' <span class="tag">geplant</span>':''}</span><b style="font-weight:600">${esc(S.days[k].kommentar||'')}</b></div>`).join('');
   app.innerHTML=`
   <div class="stats">
     <div class="stat"><div class="v">${c.urlaub}${ans?`/${ans}`:''}</div><div class="l">Urlaub</div></div>
@@ -1181,13 +1216,14 @@ function renderAusw(){
       <tr><td>Stand 1. Januar</td><td>${fmtS(kStart)} Std.</td></tr>
       ${y===nowY?`<tr><td>Stand heute</td><td class="${kJetzt>=0?'pos':'neg'}"><b>${fmtS(kJetzt)} Std.</b></td></tr>`:''}
       <tr><td>${y>=nowY?'Prognose 31.12.':'Stand 31.12.'}</td><td>${fmtS(kEnde)} Std.</td></tr>
-      <tr><td>Überstunden-Abbau</td><td>${c.abbau} Tag${c.abbau===1?'':'e'} (≈ ${fmt(c.abbau*sT)} Std.)</td></tr>
+      <tr><td>Überstunden-Abbau</td><td>${c.abbau} Tag${c.abbau===1?'':'e'} (${fmt(c.abbau*abbauTag())} Std.)</td></tr>
     </tbody></table>
     ${c.abbau?`<div style="margin-top:8px">${blockListe(y,'abbau')}</div>`:''}
     ${monRows?`<h2 style="margin-top:14px">Je Monat</h2><table><tbody>${monRows}</tbody></table>`:''}`, `${fmtS(y===nowY?kJetzt:kEnde)} Std.`, true)}
   ${sec('a_su',`⭐ Sonderurlaub ${y}`, blockListe(y,'sonder'), c.sonder?c.sonder+' Tage':'')}
   ${sec('a_frei',`😌 Freie Tage ${y}`, freiHTML, c.frei+' Tage')}
   ${sec('a_krank',`🤒 Krank ${y}`, blockListe(y,'krank'), c.krank?c.krank+' Tage':'')}
+  ${veranstHTML?sec('a_ver',`🥂 Betriebliche Veranstaltungen ${y}`, veranstHTML, c.veranst+(c.veranst===1?' Tag':' Tage')):''}
   ${sec('a_sch',`👷 Schichten ${y}`, `<div class="stats3">${schList||'<div class="muted">Keine Schichten.</div>'}</div>
      <div class="muted" style="margin-top:8px">${c.arbeit} Arbeitstage · davon ${sa} Samstage${sofe?` · ${sofe} an Sonn-/Feiertagen`:''}</div>`, c.arbeit+' Tage')}
   ${sec('a_log',`✎ Änderungen ${y}`, logs.length? logs.map(x=>logZeile(x,true)).join('') : '<div class="muted">Noch keine Änderungen. Ab jetzt wird jede Änderung an einem schon eingetragenen Tag mit Datum und Uhrzeit festgehalten.</div>', logs.length?String(logs.length):'')}
@@ -1361,8 +1397,12 @@ const HILFE={
          ['Mehrere Tage','Unten „Mehrere Tage eintragen“ aufklappen: erst die Art wählen, dann die Tage antippen, dann übernehmen. Für lange Zeiträume „Längeren Zeitraum eintragen“.'],
          ['U geplant','Für Urlaub, der noch nicht genehmigt ist. Zählt wie Urlaub (Stunden, Resturlaub), wird aber gestrichelt angezeigt und im Kalender als „U geplant“ eingetragen. Ist er genehmigt, den Tag auf „Urlaub“ umstellen.'],
          ['Mehrere löschen','In „Mehrere Tage eintragen“ 🗑 Löschen wählen, die Tage antippen und löschen – oder unter „Längeren Zeitraum“ 🗑 Löschen für einen ganzen Zeitraum.'],
+         ['Kommentar','Im Tag-Fenster unter „Kommentar“ eine Notiz nur für dich, z. B. „Inventur“. Sie steht in der Woche mit 💬 und geht nicht in den Kalender. Was in den Kalender soll (z. B. Baumberg), gehört in „Bemerkung / Ort“.'],
+         ['Sonntag','Sonntagsstunden zählen doppelt. Bei einem neuen Eintrag am Sonntag ist deshalb der Zuschlag 100 % schon vorgewählt – im Tag-Fenster lässt er sich ändern.'],
+         ['Veranstaltung','Für betriebliche Veranstaltungen ohne Stundenerfassung (0 Std., zählt wie ein freier Tag). Was es war, unter Kommentar eintragen. Ist die Veranstaltung nach einer Schicht, den Tag als Arbeit lassen und sie nur als Kommentar notieren.'],
+         ['Ü-Abbau','Ein Ü-Abbau-Tag zählt mit 7,50 Std. ins Ist der Woche. Unter den Zahlen oben steht, wie viel dafür vom Überstundenkonto abgeht.'],
          ['✎ neben dem Wochentag','Dieser Tag wurde geändert, nachdem er schon eingetragen war. Im Tag-Fenster steht unten, wann und was geändert wurde.'],
-         ['Zahlen oben','„Woche“ = Ist minus Soll dieser Woche, „Konto“ = Überstundenkonto einschließlich dieser Woche.'],
+         ['Zahlen oben','„Woche“ = Ist minus Soll dieser Woche (Ü-Abbau-Tage zählen mit 7,50 Std. mit), „Konto“ = Überstundenkonto einschließlich dieser Woche und abzüglich Ü-Abbau.'],
          ['Kalender','Ist der Abgleich an, sammelt der orange Balken oben die Änderungen. „Senden“ überträgt sie mit einem Sprung an den Kurzbefehl.']],
   monat:[['Lohn','Brutto und Netto vom Lohnzettel eintragen. Urlaubs- oder Weihnachtsgeld unter „Sonderzahlung“ mit Brutto und Netto.'],
          ['Gehaltsänderung','Ändert sich das Gehalt zum Monatsanfang: im ersten Monat mit neuem Gehalt eintragen und „Auf Folgemonate übertragen“ tippen.'],
@@ -1579,6 +1619,7 @@ function syncSection(){
    Bei jeder neuen Version: APP_VERSION erhöhen, oben in VERSIONEN einen Eintrag ergänzen und in sw.js den CACHE-Namen anpassen. */
 const ENTWICKLER='Christian Mättig', PARTNER='Claude (Anthropic)';
 const VERSIONEN=[
+  {v:'2.23', d:'24.11.2026', t:['Neues Feld „Kommentar“ bei jedem Tag – bleibt nur in der App (z. B. Inventur)','Sonntag: Stunden zählen doppelt – Zuschlag 100 % wird bei neuen Einträgen vorgewählt','Neue Art „Veranstaltung“ für betriebliche Veranstaltungen ohne Stundenerfassung','Woche: Ü-Abbau-Tage zählen mit 7,50 Std. ins Ist, der Abzug vom Konto steht in einer eigenen Zeile – der Kontostand bleibt gleich','Hinweis „Neue Version ist da – Jetzt laden“, sobald es ein Update gibt']},
   {v:'2.22', d:'02.11.2026', t:['Neue Art „U geplant“ für Urlaub, der noch nicht genehmigt ist – zählt wie Urlaub, im Kalender als „U geplant“','Mehrere Einträge auf einmal löschen: „Mehrere Tage eintragen“ oder „Längeren Zeitraum“ → 🗑 Löschen']},
   {v:'2.21', d:'14.10.2026', t:['Arbeitstage bis zur Rente nach Plan: 5 Tage pro Woche, Feiertage, Urlaub 36 Tage (Rentenjahr anteilig) – keine Hochrechnung mehr','„≈ Arbeitstage“ antippen: Rechnung je Jahr und Annahmen zum Ändern']},
   {v:'2.20', d:'14.10.2026', t:['Arbeitstage bis zur Rente genauer: eingetragene Tage zählen exakt, der Rest nach deinem Anteil der letzten 12 Monate – die Zahl sinkt jetzt pro Arbeitstag um 1','Countdown aktualisiert sich bei neuem Tag, auch wenn die App im Hintergrund offen war','Die Stechuhr im Bild zeigt die echte Uhrzeit']},
@@ -1687,7 +1728,7 @@ function renderEinst(){
     <div class="hint">${(k.modus||'app')==='clip'?'„Senden“ kopiert die Änderungen. Dann zweimal hinten aufs iPhone tippen – der Kurzbefehl läuft im Hintergrund, du bleibst in der App. Einrichtung: ❓ oben.':'Die Kurzbefehle-App öffnet sich kurz, zurück mit „◀ Zeiten“ oben links. Unsichtbar geht es mit „Rückseite tippen“ – Einrichtung: ❓ oben.'}</div>
     ${S.kalLast?`<button class="btn small" data-act="kallast" style="margin-top:8px">Letzte Übertragung nochmal kopieren</button>`:''}
     <label class="f">Abgleichen bei</label>
-    <div class="row">${['arbeit','frei','abbau','urlaub','ugeplant','krank','feiertag','sonder'].map(t=>`<button class="btn small ${k.typen.includes(t)?'on':''}" data-kaltyp="${t}">${TYPEN[t].name}</button>`).join('')}</div>
+    <div class="row">${['arbeit','frei','abbau','urlaub','ugeplant','krank','feiertag','sonder','veranst'].map(t=>`<button class="btn small ${k.typen.includes(t)?'on':''}" data-kaltyp="${t}">${TYPEN[t].name}</button>`).join('')}</div>
     <label class="f" style="display:flex;gap:8px;align-items:center;margin-top:12px"><input type="checkbox" data-kal="urlaubGanz" ${k.urlaubGanz?'checked':''}> Urlaub als ganztägigen Termin eintragen</label>
     <label class="f" style="display:flex;gap:8px;align-items:center"><input type="checkbox" data-kal="abbauGanz" ${k.abbauGanz?'checked':''}> Ü-Abbau als ganztägigen Termin „Ü-Abbau“ eintragen</label>
     <div class="hint">Dafür braucht der Kurzbefehl die Teile für „Ü-Abbau“ und „U geplant“ (Anleitung: ❓ oben). Ohne sie wird an solchen Tagen nur die Schicht gelöscht.</div>
@@ -1826,10 +1867,10 @@ function download(name,text,type){
   setTimeout(()=>URL.revokeObjectURL(a.href),2000);
 }
 function exportCSV(){
-  const lines=['Datum;Tag;Typ;Von;Bis;Pause;Std;Zuschlag;Bemerkung'];
+  const lines=['Datum;Tag;Typ;Von;Bis;Pause;Std;Zuschlag;Bemerkung;Kommentar'];
   for(const k of Object.keys(S.days).sort()){
     const e=S.days[k], d=parse(k);
-    lines.push([`${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`,WT[d.getDay()],TYPEN[e.typ].name,e.von||'',e.bis||'',e.typ==='arbeit'&&e.von?e.pause:'',fmt(stunden(e)),zuschlagP(e)?zuschlagP(e)+'%':'',`"${(e.notiz||'').replace(/"/g,'""')}"`].join(';'));
+    lines.push([`${pad(d.getDate())}.${pad(d.getMonth()+1)}.${d.getFullYear()}`,WT[d.getDay()],TYPEN[e.typ].name,e.von||'',e.bis||'',e.typ==='arbeit'&&e.von?e.pause:'',fmt(stunden(e)),zuschlagP(e)?zuschlagP(e)+'%':'',`"${(e.notiz||'').replace(/"/g,'""')}"`,`"${(e.kommentar||'').replace(/"/g,'""')}"`].join(';'));
   }
   download(`zeiterfassung-${iso(new Date())}.csv`,'\ufeff'+lines.join('\r\n'),'text/csv');
 }
@@ -1874,8 +1915,11 @@ const onClick=ev=>{
       const ch=[], n=fill.days.length;
       for(const s of fill.days){
         let e;
-        if(fill.art.startsWith('tpl:')){ const tp=S.settings.schichten[+fill.art.slice(4)]; e={typ:'arbeit',von:tp.von,bis:tp.bis,pause:tp.pause}; const alt=S.days[s]; if(alt?.typ==='arbeit'&&alt.notiz) e.notiz=alt.notiz; }
+        const alt=S.days[s];
+        if(fill.art.startsWith('tpl:')){ const tp=S.settings.schichten[+fill.art.slice(4)]; e={typ:'arbeit',von:tp.von,bis:tp.bis,pause:tp.pause}; if(alt?.typ==='arbeit'&&alt.notiz) e.notiz=alt.notiz;
+          if(alt?.typ==='arbeit'&&alt.zuschlag) e.zuschlag=alt.zuschlag; else if(sonntag(s)) e.zuschlag=100; }
         else e={typ:fill.art};
+        if(alt?.kommentar) e.kommentar=alt.kommentar;
         if(setDay(s,e)) ch.push(s);
       }
       fill.days=[]; save(); commitKal(ch); render(); return toast(`${n} Tag${n>1?'e':''} eingetragen`);
@@ -2000,7 +2044,9 @@ const sheet=document.getElementById('sheet');
 sheet.addEventListener('click',ev=>{
   const t=ev.target.closest('button'); if(!t) return;
   if(t.dataset.rtyp){ readRange(); rng.typ=t.dataset.rtyp; return drawRange(); }
-  if(t.dataset.typ){ readSheet(); edit.typ=t.dataset.typ; if(edit.typ==='arbeit'&&edit.pause==null) edit.pause=30; return drawSheet(); }
+  if(t.dataset.typ){ readSheet(); const vor=edit.typ; edit.typ=t.dataset.typ; if(edit.typ==='arbeit'&&edit.pause==null) edit.pause=30;
+    if(edit.typ==='arbeit' && vor!=='arbeit' && sonntag(edit._s) && !edit.zuschlag) edit.zuschlag=100;
+    return drawSheet(); }
   if(t.dataset.tpl!==undefined){ readSheet(); const tp=S.settings.schichten[+t.dataset.tpl]; Object.assign(edit,{von:tp.von,bis:tp.bis,pause:tp.pause}); return drawSheet(); }
   switch(t.dataset.act){
     case 'close': rng=null; return closeSheet();
@@ -2030,8 +2076,9 @@ sheet.addEventListener('click',ev=>{
         if((!edit.von||!edit.bis) && edit.std==null) return toast('Von/Bis oder Stunden eintragen');
         if(edit.von&&edit.bis) Object.assign(e,{von:edit.von,bis:edit.bis,pause:edit.pause});
         if(edit.zuschlag) e.zuschlag=edit.zuschlag; }
-      if(edit.std!=null && edit.typ!=='frei') e.std=edit.std;
+      if(edit.std!=null && (edit.typ==='arbeit' || TYPEN[edit.typ].gutschrift)) e.std=edit.std;
       if(edit.notiz) e.notiz=edit.notiz;
+      if(edit.kommentar) e.kommentar=edit.kommentar;
       const ch=setDay(s,e); save(); closeSheet(); if(ch) commitKal([s]); render(); toast('Gespeichert');
       return;
     }
@@ -2077,6 +2124,20 @@ let syZuletzt=0;
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible' && syAktiv() && SY.auto!==false && Date.now()-syZuletzt>15000){ syZuletzt=Date.now(); syncJetzt(false); } });
 document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible'){ setTimeout(checkPop,600); if(renderTag!==iso(new Date())) softRender(); else uhrStellen(); } });
 setInterval(()=>{ if(document.visibilityState!=='visible') return; if(renderTag!==iso(new Date())) softRender(); else uhrStellen(); },30000);
+/* Neue Version auf GitHub? → Hinweis „Neue Version ist da – Jetzt laden“ */
+let upZuletzt=0;
+async function updateCheck(){
+  if(location.protocol==='file:' || Date.now()-upZuletzt<60000) return; upZuletzt=Date.now();
+  try{
+    const r=await fetch('./index.html?v='+Date.now(),{cache:'no-store'}); if(!r.ok) return;
+    const m=(await r.text()).match(/const APP_VERSION = 'v([\d.]+)'/);
+    if(m && vNeuer(m[1], APP_VERSION.slice(1))) document.getElementById('upbar').innerHTML=`<div class="upbar"><span>✨ Neue Version ${m[1]} ist da</span><button id="upLoad">Jetzt laden</button></div>`;
+  }catch(e){}
+}
+document.getElementById('upbar').addEventListener('click',ev=>{ if(ev.target.id==='upLoad') location.reload(); });
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') updateCheck(); });
+setInterval(()=>{ if(document.visibilityState==='visible'){ upZuletzt=0; updateCheck(); } },30*60000);
+setTimeout(updateCheck,3000);
 if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script>
 </body>
